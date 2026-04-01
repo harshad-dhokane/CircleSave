@@ -1,0 +1,9 @@
+contracts
+node_modules
+dist
+.env
+.env.local
+.env.*.local
+.codex
+new.zip
+info.md
