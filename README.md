@@ -25,7 +25,11 @@ npm install
 cp .env.example .env
 ```
 
-3. Start the app:
+3. Fill in your local `.env` with your own values.
+
+Do not commit `.env`. It is already ignored by Git.
+
+4. Start the app:
 
 ```bash
 npm run dev
@@ -33,17 +37,17 @@ npm run dev
 
 ## Environment Variables
 
-Set these values locally and in Vercel:
+Add these variable names locally and in Vercel:
 
 ```bash
-VITE_STARKNET_RPC_URL=https://starknet-sepolia-rpc.publicnode.com
-VITE_CARTRIDGE_RPC_URL=https://api.cartridge.gg/x/starknet/sepolia
-VITE_CIRCLE_FACTORY=0x59f8d156789b2c2dba46a36998dfff79f83acc6e6f355f09d3cc42cca97500
-VITE_REPUTATION=0x5f67b0d4c13b2d1919f85494783746995157cb88b3de2999fa12db021cd5395
-VITE_COLLATERAL_MANAGER=0x30437d641289c541df8f3a5f3f3a9fc6795d1622941a0cef682874c2d9e1b8b
+VITE_STARKNET_RPC_URL=your_rpc_url
+VITE_CARTRIDGE_RPC_URL=your_cartridge_rpc_url
+VITE_CIRCLE_FACTORY=your_circle_factory_address
+VITE_REPUTATION=your_reputation_address
+VITE_COLLATERAL_MANAGER=your_collateral_manager_address
 ```
 
-These are client-side `VITE_` variables, so they are safe to configure as public frontend env vars in Vercel.
+These are client-side `VITE_` variables. Keep the actual values out of Git and set them in your local `.env` and in Vercel Project Settings.
 
 ## Vercel Deployment
 
@@ -71,14 +75,25 @@ npm run build
 dist
 ```
 
-7. Add the environment variables from `.env.example` in the Vercel dashboard.
-8. Deploy.
+7. In Vercel go to `Project Settings -> Environment Variables`.
+8. Add these keys:
+
+```bash
+VITE_STARKNET_RPC_URL
+VITE_CARTRIDGE_RPC_URL
+VITE_CIRCLE_FACTORY
+VITE_REPUTATION
+VITE_COLLATERAL_MANAGER
+```
+
+9. Paste your real values there.
+10. Deploy.
 
 ## Notes
 
 - The deployed app is frontend-only.
 - The `contracts/` folder is not needed for Vercel deployment and is excluded from upload.
-- If you update deployed Starknet addresses later, update both `.env` and the Vercel environment variables.
+- If you update deployed Starknet addresses later, update your local `.env` and the Vercel environment variables.
 
 ## Build Check
 
