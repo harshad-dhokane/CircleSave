@@ -5,7 +5,7 @@ const steps = [
     number: '01',
     icon: Wallet,
     title: 'Connect Once',
-    description: 'Connect with Cartridge, Argent, or Braavos once in the header. That same account powers circles, swap, DCA, lending, and logs.',
+    description: 'Connect with Cartridge once in the header. That same account powers circles, swap, DCA, lending, and logs.',
     color: '#FF6B6B',
   },
   {
@@ -26,7 +26,7 @@ const steps = [
     number: '04',
     icon: FileText,
     title: 'Track Everything',
-    description: 'Circle activity and StarkZap actions are visible in profile and logs, with transaction status and Voyager links for quick verification.',
+    description: 'Public logs show full contract activity, while dashboard activity filters the same contract feed to your wallet and circles, with Voyager links for verification.',
     color: '#96CEB4',
   },
 ];

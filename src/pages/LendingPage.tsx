@@ -19,6 +19,9 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
+  type StarkZapExecutionMode,
+  type StarkZapLendingHealthView,
+  type StarkZapLendingStrategy,
   type StarkZapMarketView,
   type StarkZapPositionView,
   type StarkZapTokenKey,
@@ -28,23 +31,49 @@ import { useWallet } from '@/hooks/useWallet';
 
 const TOKEN_OPTIONS: StarkZapTokenKey[] = ['ETH', 'USDC', 'STRK'];
 const TOKEN_PRESETS = ['1', '5', '10'];
-
+const LENDING_ACTIONS: Array<{ value: StarkZapLendingStrategy; label: string; helper: string }> = [
+  { value: 'deposit', label: 'Deposit', helper: 'Supply idle assets into Vesu through StarkZap.' },
+  { value: 'withdraw', label: 'Withdraw', helper: 'Pull a fixed amount out of Vesu.' },
+  { value: 'withdraw_max', label: 'Withdraw Max', helper: 'Empty the selected supplied asset in one click.' },
+  { value: 'borrow', label: 'Borrow', helper: 'Borrow against a chosen collateral asset and preview health before signing.' },
+  { value: 'repay', label: 'Repay', helper: 'Repay outstanding debt while checking the resulting health path.' },
+];
 export function LendingPage() {
   const { isConnected, address } = useWallet();
   const {
+    borrowFromLending,
+    depositToLending,
+    getMaxBorrowQuote,
+    isWalletReady,
     loadLendingMarkets,
     loadLendingPositions,
-    depositToLending,
+    quoteLendingHealth,
+    recommendedExecutionMode,
+    repayToLending,
     withdrawFromLending,
+    withdrawMaxFromLending,
   } = useStarkZapActions();
+  const [action, setAction] = useState<StarkZapLendingStrategy>('deposit');
   const [token, setToken] = useState<StarkZapTokenKey>('STRK');
+  const [collateralToken, setCollateralToken] = useState<StarkZapTokenKey>('ETH');
   const [amount, setAmount] = useState('1');
   const [markets, setMarkets] = useState<StarkZapMarketView[]>([]);
   const [positions, setPositions] = useState<StarkZapPositionView[]>([]);
+  const [health, setHealth] = useState<StarkZapLendingHealthView | null>(null);
+  const [maxBorrow, setMaxBorrow] = useState<string | null>(null);
   const [lastTx, setLastTx] = useState<{ hash: string; explorerUrl: string } | null>(null);
-  const [activeAction, setActiveAction] = useState<'deposit' | 'withdraw' | null>(null);
+  const [feeMode, setFeeMode] = useState<StarkZapExecutionMode>(recommendedExecutionMode);
+  const [activeAction, setActiveAction] = useState<'submit' | 'health' | 'max' | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const accountInitializing = isConnected && !isWalletReady;
+
+  const requiresPair = action === 'borrow' || action === 'repay';
+  const requiresAmount = action !== 'withdraw_max';
+
+  useEffect(() => {
+    setFeeMode(recommendedExecutionMode);
+  }, [recommendedExecutionMode]);
 
   const refresh = async () => {
     try {
@@ -63,33 +92,81 @@ export function LendingPage() {
   };
 
   useEffect(() => {
-    if (!isConnected) return;
+    if (!isWalletReady) return;
     void refresh();
-  }, [isConnected]);
+  }, [isWalletReady]);
 
-  const handleDeposit = async () => {
+  const handlePreviewHealth = async () => {
+    if (!requiresPair) return;
+
     try {
-      setActiveAction('deposit');
+      setActiveAction('health');
       setErrorMessage(null);
-      const tx = await depositToLending({ token, amount });
-      setLastTx(tx);
-      await refresh();
+      setHealth(await quoteLendingHealth({
+        action,
+        collateralToken,
+        debtToken: token,
+        amount,
+        feeMode,
+      }));
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Deposit failed');
+      setHealth(null);
+      setErrorMessage(error instanceof Error ? error.message : 'Health preview failed');
     } finally {
       setActiveAction(null);
     }
   };
 
-  const handleWithdraw = async () => {
+  const handleMaxBorrow = async () => {
+    if (action !== 'borrow') return;
+
     try {
-      setActiveAction('withdraw');
+      setActiveAction('max');
       setErrorMessage(null);
-      const tx = await withdrawFromLending({ token, amount });
+      setMaxBorrow(await getMaxBorrowQuote({
+        collateralToken,
+        debtToken: token,
+      }));
+    } catch (error) {
+      setMaxBorrow(null);
+      setErrorMessage(error instanceof Error ? error.message : 'Max borrow quote failed');
+    } finally {
+      setActiveAction(null);
+    }
+  };
+
+  const handleSubmit = async () => {
+    try {
+      setActiveAction('submit');
+      setErrorMessage(null);
+
+      let tx: { hash: string; explorerUrl: string };
+      if (action === 'deposit') {
+        tx = await depositToLending({ token, amount, feeMode });
+      } else if (action === 'withdraw') {
+        tx = await withdrawFromLending({ token, amount, feeMode });
+      } else if (action === 'withdraw_max') {
+        tx = await withdrawMaxFromLending({ token, feeMode });
+      } else if (action === 'borrow') {
+        tx = await borrowFromLending({
+          collateralToken,
+          debtToken: token,
+          amount,
+          feeMode,
+        });
+      } else {
+        tx = await repayToLending({
+          collateralToken,
+          debtToken: token,
+          amount,
+          feeMode,
+        });
+      }
+
       setLastTx(tx);
       await refresh();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Withdraw failed');
+      setErrorMessage(error instanceof Error ? error.message : 'Lending action failed');
     } finally {
       setActiveAction(null);
     }
@@ -113,7 +190,7 @@ export function LendingPage() {
 
   return (
     <div className="min-h-screen bg-[#FEFAE0]">
-      <div className="border-b-[2px] border-black bg-white">
+      <div className="content-divider-bottom border-b-[2px] border-black bg-white">
         <div className="page-shell py-8 md:py-10">
           <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
             <div>
@@ -121,24 +198,26 @@ export function LendingPage() {
                 <Zap className="h-4 w-4" />
                 StarkZap v2 Lending
               </div>
-              <h1 className="text-4xl font-black md:text-5xl">Lending Workspace</h1>
+              <h1 className="text-4xl font-black md:text-5xl">Vesu Strategy Workspace</h1>
               <p className="mt-3 max-w-3xl text-[15px] leading-relaxed text-black/70 md:text-base">
-                Deposit or withdraw through StarkZap&apos;s Vesu provider using the same CircleSave wallet session, then track positions and logs without switching context.
+                Deposit, withdraw, borrow, repay, and preview health inside CircleSave so your savings circles can tap real liquidity instead of isolated demo actions.
               </p>
               <div className="mt-4 flex flex-wrap gap-3">
                 <div className="neo-chip bg-white">
                   <Wallet className="h-4 w-4" />
-                  {address}
+                  <span className="text-wrap-safe min-w-0 font-mono normal-case tracking-normal">
+                    {address}
+                  </span>
                 </div>
                 <div className="neo-chip bg-[#FEFAE0]">
                   <ShieldCheck className="h-4 w-4" />
-                  Vesu actions + shared logs
+                  Vesu + StarkZap health checks
                 </div>
               </div>
             </div>
 
             <div className="flex flex-wrap gap-3">
-              <Button variant="outline" onClick={() => void refresh()} className="border-[2px] border-black">
+              <Button variant="outline" onClick={() => void refresh()} disabled={!isWalletReady || refreshing} className="border-[2px] border-black">
                 <RefreshCcw className="mr-2 h-4 w-4" />
                 {refreshing ? 'Refreshing...' : 'Refresh Data'}
               </Button>
@@ -153,12 +232,17 @@ export function LendingPage() {
       </div>
 
       <div className="page-shell grid gap-6 py-8 xl:grid-cols-[minmax(0,1fr)_360px] xl:py-10">
+        {accountInitializing && (
+          <div className="xl:col-span-2 border-[2px] border-black bg-[#FFE66D] px-5 py-4 text-sm font-bold leading-relaxed shadow-[3px_3px_0px_0px_#1a1a1a]">
+            Wallet session is finishing setup. Lending markets and positions will load automatically in a moment.
+          </div>
+        )}
         <section className="space-y-6">
           <div className="neo-panel p-6 md:p-8">
             <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
                 <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Action Builder</p>
-                <h2 className="text-3xl font-black">Deposit Or Withdraw</h2>
+                <h2 className="text-3xl font-black">Lend, Borrow, Or Repay</h2>
               </div>
               <div className="flex flex-wrap gap-2">
                 {TOKEN_PRESETS.map((preset) => (
@@ -176,9 +260,28 @@ export function LendingPage() {
               </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               <div>
-                <p className="mb-2 text-sm font-bold">Token</p>
+                <p className="mb-2 text-sm font-bold">Action</p>
+                <Select value={action} onValueChange={(value) => setAction(value as StarkZapLendingStrategy)}>
+                  <SelectTrigger className="w-full border-[2px] border-black bg-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="border-[2px] border-black">
+                    {LENDING_ACTIONS.map((item) => (
+                      <SelectItem key={item.value} value={item.value}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="mt-2 text-sm text-black/60">
+                  {LENDING_ACTIONS.find((item) => item.value === action)?.helper}
+                </p>
+              </div>
+
+              <div>
+                <p className="mb-2 text-sm font-bold">{requiresPair ? 'Debt Asset' : 'Asset'}</p>
                 <Select value={token} onValueChange={(value) => setToken(value as StarkZapTokenKey)}>
                   <SelectTrigger className="w-full border-[2px] border-black bg-white">
                     <SelectValue />
@@ -193,23 +296,51 @@ export function LendingPage() {
                 </Select>
               </div>
 
-              <div>
-                <p className="mb-2 text-sm font-bold">Amount</p>
-                <Input
-                  value={amount}
-                  onChange={(event) => setAmount(event.target.value)}
-                  className="border-[2px] border-black bg-white"
-                  placeholder="1"
-                />
-              </div>
+              {requiresPair && (
+                <div>
+                  <p className="mb-2 text-sm font-bold">Collateral Asset</p>
+                  <Select value={collateralToken} onValueChange={(value) => setCollateralToken(value as StarkZapTokenKey)}>
+                    <SelectTrigger className="w-full border-[2px] border-black bg-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="border-[2px] border-black">
+                      {TOKEN_OPTIONS.map((item) => (
+                        <SelectItem key={item} value={item}>
+                          {item}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {requiresAmount && (
+                <div>
+                  <p className="mb-2 text-sm font-bold">Amount</p>
+                  <Input
+                    value={amount}
+                    onChange={(event) => setAmount(event.target.value)}
+                    className="border-[2px] border-black bg-white"
+                    placeholder="1"
+                  />
+                </div>
+              )}
+
             </div>
 
             <div className="mt-6 flex flex-wrap gap-3">
-              <Button type="button" onClick={handleDeposit} disabled={activeAction !== null} className="neo-button-secondary">
-                {activeAction === 'deposit' ? 'Submitting Deposit...' : 'Deposit to Vesu'}
-              </Button>
-              <Button type="button" onClick={handleWithdraw} disabled={activeAction !== null} className="neo-button-primary">
-                {activeAction === 'withdraw' ? 'Submitting Withdraw...' : 'Withdraw from Vesu'}
+              {action === 'borrow' && (
+                <Button type="button" onClick={handleMaxBorrow} disabled={activeAction !== null || !isWalletReady} className="neo-button-secondary">
+                  {activeAction === 'max' ? 'Checking Max Borrow...' : 'Get Max Borrow'}
+                </Button>
+              )}
+              {requiresPair && (
+                <Button type="button" onClick={handlePreviewHealth} disabled={activeAction !== null || !isWalletReady} className="neo-button-secondary">
+                  {activeAction === 'health' ? 'Previewing Health...' : 'Preview Health'}
+                </Button>
+              )}
+              <Button type="button" onClick={handleSubmit} disabled={activeAction !== null || !isWalletReady} className="neo-button-primary">
+                {activeAction === 'submit' ? 'Submitting...' : `${LENDING_ACTIONS.find((item) => item.value === action)?.label} Now`}
               </Button>
             </div>
 
@@ -233,10 +364,18 @@ export function LendingPage() {
               <div className="grid gap-4 md:grid-cols-2">
                 {markets.map((market) => (
                   <div key={`${market.protocol}-${market.asset}-${market.poolName}`} className="border-[2px] border-black bg-[#FEFAE0] p-5">
-                    <p className="font-black">{market.asset}</p>
-                    <p className="mt-1 text-sm text-black/60">{market.protocol} • {market.poolName}</p>
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="font-black">{market.asset}</p>
+                        <p className="mt-1 text-sm text-black/60">{market.protocol} • {market.poolName}</p>
+                      </div>
+                      <div className="border-[2px] border-black bg-white px-3 py-1 text-xs font-black uppercase tracking-[0.08em]">
+                        {market.canBeBorrowed ? 'Borrowable' : 'Supply Only'}
+                      </div>
+                    </div>
                     <div className="mt-4 space-y-2 text-[15px]">
                       <p><span className="font-black">Supply APY:</span> {market.supplyApy || 'Unavailable'}</p>
+                      <p><span className="font-black">Borrow APR:</span> {market.borrowApr || 'Unavailable'}</p>
                       <p><span className="font-black">Supplied:</span> {market.totalSupplied || 'Unavailable'}</p>
                       <p><span className="font-black">Borrowed:</span> {market.totalBorrowed || 'Unavailable'}</p>
                     </div>
@@ -268,22 +407,59 @@ export function LendingPage() {
             </div>
             <div className="space-y-3">
               <div className="border-[2px] border-black bg-[#FEFAE0] p-4">
-                <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Selected Asset</p>
-                <p className="mt-2 text-2xl font-black">{token}</p>
+                <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Action</p>
+                <p className="mt-2 text-2xl font-black">{LENDING_ACTIONS.find((item) => item.value === action)?.label}</p>
               </div>
               <div className="border-[2px] border-black bg-white p-4">
-                <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Action Size</p>
-                <p className="mt-2 text-2xl font-black">{amount || '0'}</p>
+                <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">{requiresPair ? 'Debt / Collateral' : 'Selected Asset'}</p>
+                <p className="mt-2 text-xl font-black">
+                  {requiresPair ? `${token} / ${collateralToken}` : token}
+                </p>
               </div>
-              <div className="border-[2px] border-black bg-white p-4">
-                <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Checklist</p>
-                <div className="mt-3 space-y-2 text-sm">
-                  <p className="font-bold">1. Connected app wallet</p>
-                  <p className="font-bold">2. Refresh markets if data looks stale</p>
-                  <p className="font-bold">3. Deposit or withdraw, then verify in logs</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="border-[2px] border-black bg-white p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Amount</p>
+                  <p className="mt-2 text-xl font-black">{requiresAmount ? amount || '0' : 'Max'}</p>
+                </div>
+                <div className="border-[2px] border-black bg-white p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Execution</p>
+                  <p className="mt-2 text-xl font-black">Regular Signing</p>
                 </div>
               </div>
+              {maxBorrow && (
+                <div className="border-[2px] border-black bg-white p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Max Borrow</p>
+                  <p className="mt-2 text-2xl font-black">{maxBorrow}</p>
+                </div>
+              )}
             </div>
+          </div>
+
+          <div className="neo-panel p-6">
+            <div className="mb-4 flex items-center gap-3">
+              <ShieldCheck className="h-5 w-5" />
+              <h2 className="text-2xl font-black">Health Preview</h2>
+            </div>
+            {health ? (
+              <div className="space-y-3 text-[15px]">
+                <div className="border-[2px] border-black bg-[#FEFAE0] p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Simulation</p>
+                  <p className="mt-2 text-3xl font-black">{health.simulationOk ? 'OK' : 'Risky'}</p>
+                </div>
+                <p><span className="font-black">Current Collateral:</span> {health.currentCollateralValue}</p>
+                <p><span className="font-black">Current Debt:</span> {health.currentDebtValue}</p>
+                <p><span className="font-black">Projected Collateral:</span> {health.projectedCollateralValue || 'Unavailable'}</p>
+                <p><span className="font-black">Projected Debt:</span> {health.projectedDebtValue || 'Unavailable'}</p>
+                <p><span className="font-black">Max Borrow:</span> {health.maxBorrowAmount || maxBorrow || 'Unavailable'}</p>
+                {!health.simulationOk && health.simulationReason && (
+                  <p className="text-[#8b1e1e]"><span className="font-black">Reason:</span> {health.simulationReason}</p>
+                )}
+              </div>
+            ) : (
+              <p className="text-[15px] leading-relaxed text-black/70">
+                Borrow and repay flows can preview projected health before you sign, so you can show judges the risk tooling behind the lending integration.
+              </p>
+            )}
           </div>
 
           <div className="neo-panel p-6">
@@ -293,7 +469,7 @@ export function LendingPage() {
             </div>
             {lastTx ? (
               <div className="space-y-3">
-                <p className="break-all text-sm text-black/60">{lastTx.hash}</p>
+                <p className="text-wrap-safe font-mono text-sm text-black/60">{lastTx.hash}</p>
                 <a
                   href={lastTx.explorerUrl}
                   target="_blank"

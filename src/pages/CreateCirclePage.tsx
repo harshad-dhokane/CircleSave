@@ -2,10 +2,17 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useWallet } from '@/hooks/useWallet';
 import { useCreateCircle } from '@/hooks/useCircle';
+import {
+  type StarkZapDcaFrequency,
+  type StarkZapDcaProviderId,
+  type StarkZapTokenKey,
+  useStarkZapActions,
+} from '@/hooks/useStarkZapActions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
 import { 
   Select,
   SelectContent,
@@ -59,7 +66,12 @@ export function CreateCirclePage() {
   const navigate = useNavigate();
   const { isConnected } = useWallet();
   const { createCircle, isSubmitting, voyagerUrl, error: createError } = useCreateCircle();
+  const {
+    dcaProviderOptions,
+    launchCircleWithAutomation,
+  } = useStarkZapActions();
   const [currentStep, setCurrentStep] = useState(1);
+  const [isLaunchingAutomation, setIsLaunchingAutomation] = useState(false);
   
   // Form state
   const [name, setName] = useState('');
@@ -69,9 +81,16 @@ export function CreateCirclePage() {
   const [circleType, setCircleType] = useState<number>(CircleType.OPEN);
   const [category, setCategory] = useState<number>(CircleCategory.FRIENDS);
   const [collateralRatio, setCollateralRatio] = useState(150);
+  const [automationEnabled, setAutomationEnabled] = useState(true);
+  const [automationSellToken, setAutomationSellToken] = useState<StarkZapTokenKey>('USDC');
+  const [automationBudget, setAutomationBudget] = useState('300');
+  const [automationPerCycle, setAutomationPerCycle] = useState('100');
+  const [automationFrequency, setAutomationFrequency] = useState<StarkZapDcaFrequency>('P1W');
+  const [automationProvider, setAutomationProvider] = useState<StarkZapDcaProviderId>('avnu');
 
   const totalPot = BigInt(Math.floor(parseFloat(monthlyAmount) || 0)) * BigInt(maxMembers) * BigInt(1e18);
   const collateralAmount = BigInt(Math.floor(parseFloat(monthlyAmount) || 0)) * BigInt(collateralRatio) / BigInt(100) * BigInt(1e18);
+  const isBusy = isSubmitting || isLaunchingAutomation;
 
   const handleNext = () => {
     if (currentStep < STEPS.length) {
@@ -89,6 +108,48 @@ export function CreateCirclePage() {
     if (!isConnected) {
       toast.error('Please connect your wallet first');
       return;
+    }
+
+    if (automationEnabled) {
+      try {
+        setIsLaunchingAutomation(true);
+        const tx = await launchCircleWithAutomation({
+          circle: {
+            name,
+            description,
+            monthlyAmount,
+            maxMembers,
+            circleType,
+            category,
+            collateralRatio,
+          },
+          automation: {
+            enabled: true,
+            sellToken: automationSellToken,
+            sellAmount: automationBudget,
+            sellAmountPerCycle: automationPerCycle,
+            frequency: automationFrequency,
+            providerId: automationProvider,
+          },
+          feeMode: 'user_pays',
+        });
+
+        toast.success(
+          <div>
+            Circle and automation submitted!{' '}
+            <a href={tx.explorerUrl} target="_blank" rel="noopener noreferrer" className="underline font-bold">
+              View on Voyager →
+            </a>
+          </div>,
+        );
+        navigate('/circles');
+        return;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to launch circle automation';
+        toast.error(message);
+      } finally {
+        setIsLaunchingAutomation(false);
+      }
     }
 
     const result = await createCircle({
@@ -146,7 +207,7 @@ export function CreateCirclePage() {
   return (
     <div className="min-h-screen bg-[#FEFAE0]">
       {/* Header */}
-      <div className="bg-white border-b-[2px] border-black">
+      <div className="content-divider-bottom bg-white border-b-[2px] border-black">
         <div className="page-shell py-8 md:py-9">
           <button 
             onClick={() => navigate(-1)}
@@ -390,6 +451,85 @@ export function CreateCirclePage() {
                   </div>
                 </div>
 
+                <div className="neo-card p-6 md:p-7">
+                  <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Optional StarkZap Launch Plan</p>
+                      <h4 className="text-2xl font-black">Create The Circle With Auto-Funding</h4>
+                      <p className="mt-2 text-[15px] leading-relaxed text-black/65">
+                        Bundle circle creation with a recurring STRK DCA plan so the new circle launches with its funding strategy already configured.
+                      </p>
+                    </div>
+                    <label className="flex items-center gap-3 border-[2px] border-black bg-white px-4 py-3">
+                      <span className="text-sm font-black uppercase tracking-[0.08em]">Automation</span>
+                      <Switch checked={automationEnabled} onCheckedChange={setAutomationEnabled} />
+                    </label>
+                  </div>
+
+                  {automationEnabled ? (
+                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+                      <div>
+                        <Label className="mb-2 block text-sm font-bold">Sell Token</Label>
+                        <Select value={automationSellToken} onValueChange={(value) => setAutomationSellToken(value as StarkZapTokenKey)}>
+                          <SelectTrigger className="neo-input">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent className="border-[3px] border-black">
+                            <SelectItem value="USDC">USDC</SelectItem>
+                            <SelectItem value="ETH">ETH</SelectItem>
+                            <SelectItem value="STRK">STRK</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div>
+                        <Label className="mb-2 block text-sm font-bold">Budget</Label>
+                        <Input value={automationBudget} onChange={(event) => setAutomationBudget(event.target.value)} className="neo-input" />
+                      </div>
+
+                      <div>
+                        <Label className="mb-2 block text-sm font-bold">Per Cycle</Label>
+                        <Input value={automationPerCycle} onChange={(event) => setAutomationPerCycle(event.target.value)} className="neo-input" />
+                      </div>
+
+                      <div>
+                        <Label className="mb-2 block text-sm font-bold">Frequency</Label>
+                        <Select value={automationFrequency} onValueChange={(value) => setAutomationFrequency(value as StarkZapDcaFrequency)}>
+                          <SelectTrigger className="neo-input">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent className="border-[3px] border-black">
+                            <SelectItem value="PT12H">Every 12 Hours</SelectItem>
+                            <SelectItem value="P1D">Daily</SelectItem>
+                            <SelectItem value="P1W">Weekly</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div>
+                        <Label className="mb-2 block text-sm font-bold">Provider</Label>
+                        <Select value={automationProvider} onValueChange={(value) => setAutomationProvider(value as StarkZapDcaProviderId)}>
+                          <SelectTrigger className="neo-input">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent className="border-[3px] border-black">
+                            {dcaProviderOptions.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                    </div>
+                  ) : (
+                    <div className="border-[3px] border-black bg-[#FEFAE0] p-5 text-[15px] leading-relaxed text-black/70">
+                      The circle will be created on-chain normally. You can add a funding plan later from the circle detail page.
+                    </div>
+                  )}
+                </div>
+
                 {voyagerUrl && (
                   <div className="bg-green-100 border-[3px] border-green-500 p-5 flex items-center gap-3 animate-scale-in">
                     <CheckCircle className="w-7 h-7 text-green-600" />
@@ -428,13 +568,13 @@ export function CreateCirclePage() {
               ) : (
                 <Button
                   onClick={handleCreate}
-                  disabled={isSubmitting}
+                  disabled={isBusy}
                   className="neo-button-primary px-10"
                 >
-                  {isSubmitting ? (
-                    <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Creating on-chain...</>
+                  {isBusy ? (
+                    <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> {automationEnabled ? 'Launching automation...' : 'Creating on-chain...'}</>
                   ) : (
-                    <>Create Circle <Sparkles className="w-5 h-5 ml-2" /></>
+                    <>{automationEnabled ? 'Launch Circle + Automation' : 'Create Circle'} <Sparkles className="w-5 h-5 ml-2" /></>
                   )}
                 </Button>
               )}

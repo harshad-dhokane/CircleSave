@@ -29,7 +29,7 @@ export function CircleCard({ circle }: CircleCardProps) {
   };
 
   return (
-    <div className="neo-card group flex h-full flex-col overflow-hidden p-6">
+    <div className="neo-card group flex h-full min-w-0 flex-col overflow-hidden p-6">
       <div
         className="mb-5 h-3 w-24 border-[2px] border-black transition-all duration-200 group-hover:w-32"
         style={{ backgroundColor: categoryColor }}
@@ -59,38 +59,38 @@ export function CircleCard({ circle }: CircleCardProps) {
         {circle.description || `A ${categoryLabel.toLowerCase()} savings circle with ${circle.maxMembers} slots and on-chain collateral coordination.`}
       </p>
 
-      <div className="mb-5 grid grid-cols-3 gap-3">
+      <div className="mb-5 grid grid-cols-3 gap-2.5">
         <div className="bg-[#FEFAE0] border-[2px] border-black p-3 text-center min-w-0">
           <Wallet className="w-5 h-5 mx-auto mb-1 text-[#4ECDC4]" />
-          <p className="text-xs font-bold uppercase tracking-wide text-gray-600">Monthly</p>
-          <p className="text-base font-black truncate">{formatAmount(circle.monthlyAmount)}</p>
+          <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-gray-600">Monthly</p>
+          <p className="mt-1 text-[1.1rem] font-black leading-tight break-words">{formatAmount(circle.monthlyAmount)}</p>
         </div>
         <div className="bg-[#FEFAE0] border-[2px] border-black p-3 text-center min-w-0">
           <Users className="w-5 h-5 mx-auto mb-1 text-[#FF6B6B]" />
-          <p className="text-xs font-bold uppercase tracking-wide text-gray-600">Members</p>
-          <p className="text-base font-black">{circle.currentMembers}/{circle.maxMembers}</p>
+          <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-gray-600">Members</p>
+          <p className="mt-1 text-[1.1rem] font-black leading-tight">{circle.currentMembers}/{circle.maxMembers}</p>
         </div>
         <div className="bg-[#FEFAE0] border-[2px] border-black p-3 text-center min-w-0">
           <Lock className="w-5 h-5 mx-auto mb-1 text-[#FFE66D]" />
-          <p className="text-xs font-bold uppercase tracking-wide text-gray-600">Collateral</p>
-          <p className="text-base font-black truncate">{formatAmount(collateralAmount)}</p>
+          <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-gray-600">Collateral</p>
+          <p className="mt-1 text-[1.1rem] font-black leading-tight break-words">{formatAmount(collateralAmount)}</p>
         </div>
       </div>
 
       <div className="mb-4 grid gap-3">
-        <div className="flex items-center justify-between border-[2px] border-black bg-white px-3 py-2.5">
-          <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between gap-3 border-[2px] border-black bg-white px-3 py-2.5">
+          <div className="flex min-w-0 items-center gap-2">
             <ShieldCheck className="h-4 w-4 text-[#4ECDC4]" />
-            <span className="text-xs font-black uppercase tracking-[0.08em]">Why it stands out</span>
+            <span className="text-xs font-black uppercase tracking-[0.08em] leading-tight">Why it stands out</span>
           </div>
-          <span className="text-sm font-black">{circle.collateralRatio / 100}x cover</span>
+          <span className="shrink-0 text-sm font-black">{circle.collateralRatio / 100}x cover</span>
         </div>
-        <div className="flex items-center justify-between border-[2px] border-black bg-white px-3 py-2.5">
-          <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between gap-3 border-[2px] border-black bg-white px-3 py-2.5">
+          <div className="flex min-w-0 items-center gap-2">
             <TrendingUp className="h-4 w-4 text-[#FF6B6B]" />
-            <span className="text-xs font-black uppercase tracking-[0.08em]">Join pressure</span>
+            <span className="text-xs font-black uppercase tracking-[0.08em] leading-tight">Join pressure</span>
           </div>
-          <span className="text-sm font-black">
+          <span className="shrink-0 text-sm font-black">
             {spotsLeft === 0 ? 'Filled' : `${spotsLeft} spot${spotsLeft > 1 ? 's' : ''} left`}
           </span>
         </div>

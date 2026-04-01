@@ -1,14 +1,17 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useWallet } from '@/hooks/useWallet';
 import { useReputation } from '@/hooks/useReputation';
 import { useUserCircles } from '@/hooks/useCircle';
+import { type OnchainActivityEntry, useOnchainActivityFeed } from '@/hooks/useOnchainActivityFeed';
 import { useStarkZapLogs } from '@/hooks/useStarkZapLogs';
-import { getStarkZapLogAmountText } from '@/lib/starkzapLogs';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   ArrowRightLeft,
   Award,
+  Blocks,
   CheckCircle,
   Crown,
   ExternalLink,
@@ -16,8 +19,12 @@ import {
   Loader2,
   Lock,
   Medal,
+  MoveRight,
   PiggyBank,
+  Plus,
+  RefreshCcw,
   Repeat,
+  Shield,
   Trophy,
   TrendingUp,
   Users,
@@ -25,12 +32,10 @@ import {
 } from 'lucide-react';
 import {
   formatAddress,
-  formatAmount,
-  formatAmountShort,
-  getCategoryLabel,
   LEVEL_COLORS,
   LEVEL_NAMES,
 } from '@/lib/constants';
+import { getStarkZapLogAmountText, type StarkZapLogEntry } from '@/lib/starkzapLogs';
 import { CircleCard } from '@/components/circles/CircleCard';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
@@ -45,63 +50,31 @@ const LEVEL_REQUIREMENTS = [
 ];
 
 const LOG_KIND_META = {
-  swap: { label: 'Swap', color: '#4ECDC4', icon: ArrowRightLeft },
+  factory: { label: 'Factory', color: '#F4A261', icon: Blocks },
+  circle: { label: 'Circle', color: '#FF6B6B', icon: Users },
+  reputation: { label: 'Reputation', color: '#FFE66D', icon: Trophy },
+  collateral: { label: 'Collateral', color: '#96CEB4', icon: Shield },
+  swap: { label: 'Swap', color: '#DDA0DD', icon: ArrowRightLeft },
   dca: { label: 'DCA', color: '#FFE66D', icon: Repeat },
   lending: { label: 'Lending', color: '#96CEB4', icon: PiggyBank },
 } as const;
 
-function getCircleStatusClasses(status: string) {
-  switch (status) {
-    case 'ACTIVE':
-      return 'bg-[#96CEB4] text-black';
-    case 'COMPLETED':
-      return 'bg-[#4ECDC4] text-black';
-    case 'FAILED':
+function getActivityToneClasses(tone: OnchainActivityEntry['tone']) {
+  switch (tone) {
+    case 'warning':
       return 'bg-[#FF6B6B] text-white';
-    default:
+    case 'highlight':
       return 'bg-[#FFE66D] text-black';
-  }
-}
-
-function getLogStatusClasses(status: string) {
-  switch (status) {
-    case 'confirmed':
+    case 'neutral':
+      return 'bg-white text-black';
+    default:
       return 'bg-[#96CEB4] text-black';
-    case 'failed':
-      return 'bg-[#FF6B6B] text-white';
-    default:
-      return 'bg-[#FFE66D] text-black';
   }
 }
 
 function calculateMilestoneProgress(currentValue: number, requiredValue: number) {
   if (requiredValue <= 0) return 1;
   return Math.min(currentValue / requiredValue, 1);
-}
-
-function addTokenTotal(totals: Map<string, number>, amount?: string, token?: string) {
-  if (!amount || !token) return;
-
-  const parsed = Number.parseFloat(amount);
-  if (!Number.isFinite(parsed)) return;
-
-  totals.set(token, (totals.get(token) || 0) + parsed);
-}
-
-function formatTokenAmount(value: number) {
-  if (value >= 1000) return value.toLocaleString(undefined, { maximumFractionDigits: 0 });
-  if (value >= 100) return value.toLocaleString(undefined, { maximumFractionDigits: 1 });
-  if (value >= 1) return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
-  return value.toLocaleString(undefined, { maximumFractionDigits: 4 });
-}
-
-function formatTokenTotals(totals: Map<string, number>, emptyLabel: string) {
-  if (totals.size === 0) return emptyLabel;
-
-  return [...totals.entries()]
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([token, value]) => `${formatTokenAmount(value)} ${token}`)
-    .join(' • ');
 }
 
 function formatTrackedBalance(formatted?: string) {
@@ -116,68 +89,82 @@ function formatTrackedBalance(formatted?: string) {
   });
 }
 
+type ActivityTableRow = {
+  id: string;
+  kind: keyof typeof LOG_KIND_META;
+  title: string;
+  amountText: string | null;
+  summary: string;
+  account: string;
+  provider: string;
+  badgeText: string;
+  tone: OnchainActivityEntry['tone'];
+  updatedAtLabel: string;
+  updatedAtSort: number;
+  explorerUrl: string;
+  explorerLabel: string;
+};
+
+function formatWalletActionProvider(provider: string) {
+  return provider ? provider.toUpperCase() : 'STARKZAP';
+}
+
+function getWalletActionLabel(entry: StarkZapLogEntry) {
+  return getStarkZapLogAmountText(entry) || entry.summary;
+}
+
+function getWalletActionSupportText(entry: StarkZapLogEntry | null, fallback: string) {
+  if (!entry) {
+    return fallback;
+  }
+
+  return entry.status === 'confirmed'
+    ? 'Latest confirmed action'
+    : entry.status === 'failed'
+      ? 'Latest action failed'
+      : 'Pending confirmation';
+}
+
+function getWalletActionTone(status: StarkZapLogEntry['status']): OnchainActivityEntry['tone'] {
+  if (status === 'failed') return 'warning';
+  if (status === 'submitted') return 'neutral';
+  return 'success';
+}
+
 export function ProfilePage() {
-  const { address, balance, balanceLoading, assetBalances } = useWallet();
+  const { address, assetBalances } = useWallet();
   const { stats, badges, level, levelName, levelColor, isLoading } = useReputation();
   const { circles, isLoading: circlesLoading } = useUserCircles();
   const { logs } = useStarkZapLogs();
+  const {
+    entries: activityEntries,
+    error: activityError,
+    isLoading: activityLoading,
+    refresh: refreshActivity,
+  } = useOnchainActivityFeed();
+  const [activeTab, setActiveTab] = useState<'profile' | 'activity' | 'circles' | 'reputation' | 'analytics'>('profile');
+  const [selectedActivityRow, setSelectedActivityRow] = useState<ActivityTableRow | null>(null);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const shouldScrollToContentRef = useRef(false);
+  const userCircleAddressSet = useMemo(() => new Set(
+    circles.map((circle) => circle.contractAddress.toLowerCase()),
+  ), [circles]);
 
-  const myLogs = useMemo(() => {
+  const myActivityEntries = useMemo(() => {
     if (!address) return [];
-    return logs.filter((log) => log.account.toLowerCase() === address.toLowerCase());
-  }, [address, logs]);
-
-  const activityAmounts = useMemo(() => {
-    const swapTotals = new Map<string, number>();
-    const dcaBudgetTotals = new Map<string, number>();
-    const dcaCycleTotals = new Map<string, number>();
-    const lendingDepositTotals = new Map<string, number>();
-    const lendingWithdrawTotals = new Map<string, number>();
-
-    for (const log of myLogs) {
-      const details = log.details;
-
-      if (log.kind === 'swap') {
-        addTokenTotal(swapTotals, details?.inputAmount, details?.inputToken);
+    const normalizedAddress = address.toLowerCase();
+    return activityEntries.filter((entry) => {
+      if (entry.actor?.toLowerCase() === normalizedAddress) {
+        return true;
       }
 
-      if (log.kind === 'dca') {
-        addTokenTotal(dcaBudgetTotals, details?.totalAmount, details?.totalToken);
-        addTokenTotal(dcaCycleTotals, details?.cycleAmount, details?.cycleToken);
-      }
-
-      if (log.kind === 'lending') {
-        const target = details?.action === 'withdraw' ? lendingWithdrawTotals : lendingDepositTotals;
-        addTokenTotal(target, details?.inputAmount, details?.inputToken);
-      }
-    }
-
-    return {
-      swapTotals,
-      dcaBudgetTotals,
-      dcaCycleTotals,
-      lendingDepositTotals,
-      lendingWithdrawTotals,
-    };
-  }, [myLogs]);
+      return entry.circleAddress ? userCircleAddressSet.has(entry.circleAddress.toLowerCase()) : false;
+    });
+  }, [activityEntries, address, userCircleAddressSet]);
 
   const earnedBadges = badges.filter((badge) => badge.earned);
   const availableBadges = badges.filter((badge) => !badge.earned);
-  const walletBalanceValue = balanceLoading
-    ? '...'
-    : balance
-      ? parseFloat(balance.formatted).toFixed(2)
-      : '0.00';
-  const walletBalanceSymbol = balance?.symbol || 'STRK';
-  const walletBalance = `${walletBalanceValue} ${walletBalanceSymbol}`;
-  const lockedCollateral = formatAmountShort(stats?.currentCollateral || 0n);
-  const totalMonthlyCommitment = circles.reduce((sum, circle) => sum + circle.monthlyAmount, 0n);
   const portfolioCircleCount = circles.length;
-  const swapCount = myLogs.filter((log) => log.kind === 'swap').length;
-  const dcaCount = myLogs.filter((log) => log.kind === 'dca').length;
-  const lendingCount = myLogs.filter((log) => log.kind === 'lending').length;
-  const recentLogs = myLogs.slice(0, 3);
-  const latestLog = recentLogs[0] || null;
   const levelIndex = Math.max(LEVEL_ORDER.indexOf(level), 0);
   const nextLevelKey = LEVEL_ORDER[Math.min(levelIndex + 1, LEVEL_ORDER.length - 1)];
   const nextLevelName = LEVEL_NAMES[nextLevelKey] || nextLevelKey;
@@ -185,45 +172,106 @@ export function ProfilePage() {
   const currentCirclesJoined = Math.max(stats?.circlesJoined || 0, portfolioCircleCount);
   const hasPaymentHistory = (stats?.paymentsMade || 0) > 0;
   const currentOnTimeRate = hasPaymentHistory ? (stats?.onTimePaymentRate || 0) : 0;
-  const completionRate = currentCirclesJoined > 0 ? (stats?.completionRate || 0) : 0;
   const nextLevelProgress = level === LEVEL_ORDER[LEVEL_ORDER.length - 1]
     ? 100
     : Math.round((
       calculateMilestoneProgress(currentCirclesJoined, nextRequirements.minCircles) +
       calculateMilestoneProgress(currentOnTimeRate, nextRequirements.minRate)
     ) / 2 * 100);
-  const activityTotal = swapCount + dcaCount + lendingCount;
-  const swapVolumeText = formatTokenTotals(
-    activityAmounts.swapTotals,
-    swapCount > 0 ? 'Amount unavailable' : 'No swaps yet',
-  );
-  const dcaBudgetText = formatTokenTotals(
-    activityAmounts.dcaBudgetTotals,
-    dcaCount > 0 ? 'Budget unavailable' : 'No DCA yet',
-  );
-  const dcaCycleText = formatTokenTotals(
-    activityAmounts.dcaCycleTotals,
-    dcaCount > 0 ? 'Cycle amount unavailable' : 'No DCA yet',
-  );
-  const lendingFlowText = [
-    activityAmounts.lendingDepositTotals.size > 0
-      ? `In ${formatTokenTotals(activityAmounts.lendingDepositTotals, '')}`
-      : null,
-    activityAmounts.lendingWithdrawTotals.size > 0
-      ? `Out ${formatTokenTotals(activityAmounts.lendingWithdrawTotals, '')}`
-      : null,
-  ].filter(Boolean).join(' • ') || (lendingCount > 0 ? 'Amount unavailable' : 'No lending yet');
   const trackedAssetCards = assetBalances.map((asset) => ({
     symbol: asset.label,
     amount: asset.isLoading ? '...' : formatTrackedBalance(asset.balance?.formatted),
   }));
+  const safeAddress = address || '';
+  const walletActionLogs = useMemo(() => {
+    if (!safeAddress) return [];
+
+    const normalizedAddress = safeAddress.toLowerCase();
+    return logs.filter((entry) => entry.account.toLowerCase() === normalizedAddress);
+  }, [logs, safeAddress]);
+  const nonFailedWalletActionLogs = useMemo(
+    () => walletActionLogs.filter((entry) => entry.status !== 'failed'),
+    [walletActionLogs],
+  );
+  const latestSwapLog = useMemo(
+    () => nonFailedWalletActionLogs.find((entry) => entry.kind === 'swap') || null,
+    [nonFailedWalletActionLogs],
+  );
+  const latestDcaLog = useMemo(
+    () => nonFailedWalletActionLogs.find((entry) => entry.kind === 'dca') || null,
+    [nonFailedWalletActionLogs],
+  );
+  const latestLendingLog = useMemo(
+    () => nonFailedWalletActionLogs.find((entry) => entry.kind === 'lending') || null,
+    [nonFailedWalletActionLogs],
+  );
+  const createdCirclesCount = circles.filter((circle) => circle.creator.toLowerCase() === safeAddress.toLowerCase()).length;
+  const activityFactoryCount = myActivityEntries.filter((entry) => entry.category === 'factory').length;
+  const activityCircleCount = myActivityEntries.filter((entry) => entry.category === 'circle').length;
+  const totalCircleActivityCount = activityFactoryCount + activityCircleCount;
+  const swapActionCount = walletActionLogs.filter((entry) => entry.kind === 'swap').length;
+  const dcaActionCount = walletActionLogs.filter((entry) => entry.kind === 'dca').length;
+  const lendingActionCount = walletActionLogs.filter((entry) => entry.kind === 'lending').length;
+  const activityRows = useMemo<ActivityTableRow[]>(() => {
+    const contractRows = myActivityEntries
+      .map((entry) => ({
+        id: entry.id,
+        kind: entry.category,
+        title: entry.title,
+        amountText: entry.valueText || entry.circleName || null,
+        summary: entry.summary,
+        account: entry.actor || safeAddress,
+        provider: entry.sourceLabel,
+        badgeText: entry.eventName,
+        tone: entry.tone,
+        updatedAtLabel: entry.timeLabel,
+        updatedAtSort: entry.occurredAt ?? entry.sortValue,
+        explorerUrl: entry.explorerUrl,
+        explorerLabel: 'Open',
+      }));
+    const walletRows = walletActionLogs.map((entry) => ({
+      id: `starkzap:${entry.id}`,
+      kind: entry.kind,
+      title: entry.title,
+      amountText: getWalletActionLabel(entry),
+      summary: entry.summary,
+      account: entry.account,
+      provider: formatWalletActionProvider(entry.provider),
+      badgeText: entry.status === 'confirmed' ? 'Confirmed' : entry.status === 'failed' ? 'Failed' : 'Submitted',
+      tone: getWalletActionTone(entry.status),
+      updatedAtLabel: new Date(entry.updatedAt).toLocaleString(),
+      updatedAtSort: new Date(entry.updatedAt).getTime(),
+      explorerUrl: entry.explorerUrl,
+      explorerLabel: 'Open',
+    }));
+
+    return [...walletRows, ...contractRows]
+      .sort((left, right) => right.updatedAtSort - left.updatedAtSort);
+  }, [myActivityEntries, safeAddress, walletActionLogs]);
+  const combinedActivityEntryCount = activityRows.length;
+  const selectedActivityMeta = selectedActivityRow ? LOG_KIND_META[selectedActivityRow.kind] : null;
+  const SelectedActivityIcon = selectedActivityMeta?.icon;
+
+  useEffect(() => {
+    if (!shouldScrollToContentRef.current) return;
+    shouldScrollToContentRef.current = false;
+
+    if (window.innerWidth >= 1280) return;
+
+    window.requestAnimationFrame(() => {
+      contentRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    });
+  }, [activeTab]);
 
   if (isLoading) {
     return (
       <div className="min-h-screen bg-[#FEFAE0] flex items-center justify-center">
         <div className="text-center">
           <Loader2 className="w-16 h-16 animate-spin mx-auto mb-4 text-[#FF6B6B]" />
-          <p className="font-bold text-gray-600 text-lg">Loading profile from blockchain...</p>
+          <p className="font-bold text-gray-600 text-lg">Loading dashboard from blockchain...</p>
         </div>
       </div>
     );
@@ -237,7 +285,7 @@ export function ProfilePage() {
             <Lock className="w-12 h-12" />
           </div>
           <h2 className="text-3xl font-black mb-3">Connect Your Wallet</h2>
-          <p className="text-gray-600 text-lg">Connect your wallet to view your profile, circles, and investment activity.</p>
+          <p className="text-gray-600 text-lg">Connect your wallet to open your dashboard, circles, reputation, and wallet activity in one workspace.</p>
         </div>
       </div>
     );
@@ -245,607 +293,424 @@ export function ProfilePage() {
 
   return (
     <div className="min-h-screen bg-[#FEFAE0]">
-      <div className="bg-white border-b-[2px] border-black">
-        <div className="page-shell py-9 md:py-11">
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_360px]">
-            <section className="neo-panel neo-spotlight p-6 md:p-8">
-              <div className="mb-4 neo-chip bg-white">Wallet Identity</div>
-              <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
-                <div className="relative animate-scale-in">
-                  <div
-                    className="flex h-32 w-32 items-center justify-center border-[3px] border-black"
-                    style={{ backgroundColor: levelColor }}
-                  >
-                    <span className="text-5xl font-black text-white">{address.slice(2, 4)}</span>
-                  </div>
-                  <div
-                    className="absolute -bottom-3 left-1/2 -translate-x-1/2 whitespace-nowrap border-[2px] border-black px-4 py-1.5 text-sm font-black"
-                    style={{ backgroundColor: levelColor }}
-                  >
-                    {levelName}
-                  </div>
-                </div>
+      <div className="page-shell py-8 md:py-10">
+        <Tabs
+          value={activeTab}
+          onValueChange={(value) => {
+            shouldScrollToContentRef.current = true;
+            setActiveTab(value as typeof activeTab);
+          }}
+          className="w-full animate-fade-in gap-4 xl:grid xl:grid-cols-[252px_minmax(0,1fr)] xl:items-start xl:gap-5 2xl:gap-6"
+        >
+          <aside className="space-y-3 xl:self-start">
+            <TabsList className="h-auto w-full flex-nowrap justify-start gap-1 overflow-x-auto rounded-none border-[3px] border-black bg-white p-1.5 shadow-[0_4px_0px_0px_#1a1a1a] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden xl:flex-col xl:flex-nowrap xl:items-stretch xl:overflow-visible">
+              <TabsTrigger value="profile" className="flex-none min-w-[152px] shrink-0 justify-start rounded-none px-4 py-3 font-bold text-base data-[state=active]:bg-black data-[state=active]:text-white sm:min-w-[168px] xl:min-w-0 xl:w-full xl:flex-1">
+                <Wallet className="mr-2 h-5 w-5" />
+                Profile
+              </TabsTrigger>
+              <TabsTrigger value="activity" className="flex-none min-w-[152px] shrink-0 justify-start rounded-none px-4 py-3 font-bold text-base data-[state=active]:bg-black data-[state=active]:text-white sm:min-w-[168px] xl:min-w-0 xl:w-full xl:flex-1">
+                <FileText className="mr-2 h-5 w-5" />
+                Activity
+              </TabsTrigger>
+              <TabsTrigger value="circles" className="flex-none min-w-[152px] shrink-0 justify-start rounded-none px-4 py-3 font-bold text-base data-[state=active]:bg-black data-[state=active]:text-white sm:min-w-[168px] xl:min-w-0 xl:w-full xl:flex-1">
+                <Users className="mr-2 h-5 w-5" />
+                My Circles
+              </TabsTrigger>
+              <TabsTrigger value="reputation" className="flex-none min-w-[152px] shrink-0 justify-start rounded-none px-4 py-3 font-bold text-base data-[state=active]:bg-black data-[state=active]:text-white sm:min-w-[168px] xl:min-w-0 xl:w-full xl:flex-1">
+                <Medal className="mr-2 h-5 w-5" />
+                Reputation
+              </TabsTrigger>
+              <TabsTrigger value="analytics" className="flex-none min-w-[152px] shrink-0 justify-start rounded-none px-4 py-3 font-bold text-base data-[state=active]:bg-black data-[state=active]:text-white sm:min-w-[168px] xl:min-w-0 xl:w-full xl:flex-1">
+                <TrendingUp className="mr-2 h-5 w-5" />
+                Analytics
+              </TabsTrigger>
+            </TabsList>
 
-                <div className="flex-1">
-                  <h1 className="text-3xl md:text-4xl font-black">{formatAddress(address)}</h1>
-                  <p className="mt-2 font-mono text-sm text-black/55">{address}</p>
-                  <p className="mt-4 max-w-xl text-[15px] leading-relaxed text-black/70">
-                    This profile combines your circle reputation, StarkZap wallet activity, badges, and progress toward the next trust level.
-                  </p>
+            <div className="neo-panel p-4">
+              <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Quick Actions</p>
+              <div className="mt-4 grid gap-2">
+                <Link to="/circles/create" className="neo-button-primary justify-start">
+                  <Plus className="h-4 w-4" />
+                  Create Circle
+                </Link>
+                <Link to="/swap" className="neo-button-secondary justify-start">
+                  <ArrowRightLeft className="h-4 w-4" />
+                  Open Swap
+                </Link>
+                <Link to="/dca" className="neo-button-secondary justify-start">
+                  <Repeat className="h-4 w-4" />
+                  Open DCA
+                </Link>
+                <Link to="/logs" className="inline-flex items-center justify-start gap-2 border-[2px] border-black bg-white px-4 py-3 text-sm font-black uppercase tracking-[0.08em] shadow-[2px_2px_0px_0px_#1a1a1a] transition-all hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-[4px_4px_0px_0px_#1a1a1a] dark:border-[#3f4c76] dark:bg-[#1d2440] dark:shadow-[2px_2px_0px_0px_#070b17] dark:hover:shadow-[4px_4px_0px_0px_#070b17]">
+                  <FileText className="h-4 w-4" />
+                  Open Logs
+                </Link>
+              </div>
+            </div>
+          </aside>
 
-                  <div className="mt-5 flex flex-wrap gap-3">
-                    <div className="neo-chip bg-[#FEFAE0]">
-                      <Trophy className="h-4 w-4 text-[#FFD700]" />
-                      {stats?.reputationScore || 0} REP
+          <div ref={contentRef} className="mt-1 min-w-0 scroll-mt-24 xl:mt-0">
+            <TabsContent value="profile" className="space-y-6">
+              <section className="neo-panel neo-spotlight p-6 md:p-8">
+                <div className="mb-4 neo-chip bg-white">Profile</div>
+                <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+                  <div className="relative animate-scale-in">
+                    <div
+                      className="flex h-28 w-28 items-center justify-center border-[3px] border-black md:h-32 md:w-32"
+                      style={{ backgroundColor: levelColor }}
+                    >
+                      <span className="text-4xl font-black text-white md:text-5xl">{address.slice(2, 4)}</span>
                     </div>
-                    <div className="neo-chip bg-white">
-                      <Wallet className="h-4 w-4 text-[#4ECDC4]" />
-                      {walletBalance}
-                    </div>
-                    <div className="neo-chip bg-white">
-                      <Lock className="h-4 w-4 text-[#FF6B6B]" />
-                      Locked {lockedCollateral}
+                    <div
+                      className="absolute -bottom-3 left-1/2 -translate-x-1/2 whitespace-nowrap border-[2px] border-black px-4 py-1.5 text-sm font-black"
+                      style={{ backgroundColor: levelColor }}
+                    >
+                      {levelName}
                     </div>
                   </div>
 
-                  <div className="mt-6 flex flex-wrap gap-3">
-                    <Link to="/logs" className="neo-button-secondary inline-flex items-center">
-                      <FileText className="h-5 w-5" />
-                      Open Logs
-                    </Link>
-                    <Link to="/swap" className="neo-button-primary inline-flex items-center">
-                      <ArrowRightLeft className="h-5 w-5" />
-                      Open Swap
-                    </Link>
-                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                      <div className="min-w-0">
+                        <h2 className="text-3xl font-black md:text-4xl">Dashboard Profile</h2>
+                        <p className="text-wrap-safe mt-2 font-mono text-sm text-black/55">{address}</p>
+                      </div>
+                      <div
+                        className="inline-flex w-fit items-center border-[2px] border-black px-4 py-2 text-xs font-black uppercase tracking-[0.08em]"
+                        style={{ backgroundColor: levelColor }}
+                      >
+                        {levelName} tier
+                      </div>
+                    </div>
 
-                  <div className="mt-6 grid gap-3 sm:grid-cols-3">
-                    <div className="border-[2px] border-black bg-[#FEFAE0] p-4">
-                      <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Current Level</p>
-                      <p className="mt-2 text-2xl font-black">{levelName}</p>
-                    </div>
-                    <div className="border-[2px] border-black bg-[#FEFAE0] p-4">
-                      <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Circle Positions</p>
-                      <p className="mt-2 text-2xl font-black">{circles.length}</p>
-                    </div>
-                    <div className="border-[2px] border-black bg-[#FEFAE0] p-4">
-                      <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Latest Wallet Move</p>
-                      <p className="mt-2 text-lg font-black">
-                        {latestLog ? LOG_KIND_META[latestLog.kind].label : 'No activity'}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="mt-6 grid gap-4">
-                    <div className="border-[2px] border-black bg-white p-4">
+                    <div className="mt-6 border-[2px] border-black bg-white p-4">
                       <div className="mb-3 flex items-center gap-2">
                         <Wallet className="h-4 w-4 text-[#4ECDC4]" />
-                        <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Wallet Holdings</p>
+                        <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Tracked Token Balances</p>
                       </div>
                       <div className="grid gap-3 sm:grid-cols-3">
                         {trackedAssetCards.map((asset) => (
-                          <div key={asset.symbol} className="border-[2px] border-black bg-[#FEFAE0] p-4 min-w-0">
+                          <div key={asset.symbol} className="border-[2px] border-black bg-[#FEFAE0] p-4">
                             <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">{asset.symbol}</p>
-                            <p className="mt-2 text-[1.75rem] leading-tight font-black whitespace-nowrap">{asset.amount}</p>
-                            <p className="mt-1 text-xs text-black/55">Tracked wallet balance</p>
+                            <p className="mt-2 text-2xl font-black tracking-tight">{asset.amount}</p>
                           </div>
                         ))}
                       </div>
                     </div>
 
-                    <div className="border-[2px] border-black bg-white p-4">
-                      <div className="mb-3 flex items-center gap-2">
-                        <TrendingUp className="h-4 w-4 text-[#FF6B6B]" />
-                        <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">StarkZap Totals</p>
+                    <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                      <div className="border-[2px] border-black bg-[#FEFAE0] p-4">
+                        <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Circles Joined</p>
+                        <p className="mt-2 text-2xl font-black">{portfolioCircleCount}</p>
                       </div>
-                      <div className="grid gap-3">
-                        <div className="border-[2px] border-black bg-[#FEFAE0] p-4">
-                          <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Total Swapped</p>
-                          <p className="mt-2 text-[1.45rem] leading-tight font-black">{swapVolumeText}</p>
-                        </div>
-                        <div className="border-[2px] border-black bg-[#FEFAE0] p-4">
-                          <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Total DCA Budget</p>
-                          <p className="mt-2 text-[1.45rem] leading-tight font-black">{dcaBudgetText}</p>
-                          <p className="mt-1 text-xs text-black/55">
-                            {dcaCount > 0 ? `Per cycle: ${dcaCycleText}` : 'No DCA activity yet'}
-                          </p>
-                        </div>
-                        <div className="border-[2px] border-black bg-[#FEFAE0] p-4">
-                          <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Total Lending Flow</p>
-                          <p className="mt-2 text-[1.45rem] leading-tight font-black">{lendingFlowText}</p>
-                        </div>
+                      <div className="border-[2px] border-black bg-[#FEFAE0] p-4">
+                        <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Circles Created</p>
+                        <p className="mt-2 text-2xl font-black">{createdCirclesCount}</p>
+                      </div>
+                      <div className="min-w-0 border-[2px] border-black bg-[#FEFAE0] p-4">
+                        <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Latest Swap</p>
+                        <p className="text-wrap-safe mt-2 text-lg font-black">{latestSwapLog ? getWalletActionLabel(latestSwapLog) : 'No swaps yet'}</p>
+                        <p className="mt-2 text-xs font-bold uppercase tracking-[0.08em] text-black/55">
+                          {getWalletActionSupportText(latestSwapLog, 'Use swap to populate this card')}
+                        </p>
+                      </div>
+                      <div className="min-w-0 border-[2px] border-black bg-[#FEFAE0] p-4">
+                        <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Latest DCA</p>
+                        <p className="text-wrap-safe mt-2 text-lg font-black">{latestDcaLog ? getWalletActionLabel(latestDcaLog) : 'No DCA yet'}</p>
+                        <p className="mt-2 text-xs font-bold uppercase tracking-[0.08em] text-black/55">
+                          {getWalletActionSupportText(latestDcaLog, 'Create a DCA order to populate this card')}
+                        </p>
+                      </div>
+                      <div className="min-w-0 border-[2px] border-black bg-[#FEFAE0] p-4">
+                        <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Latest Lending</p>
+                        <p className="text-wrap-safe mt-2 text-lg font-black">{latestLendingLog ? getWalletActionLabel(latestLendingLog) : 'No lending yet'}</p>
+                        <p className="mt-2 text-xs font-bold uppercase tracking-[0.08em] text-black/55">
+                          {getWalletActionSupportText(latestLendingLog, 'Use lending to populate this card')}
+                        </p>
                       </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            </section>
+              </section>
 
-            <section className="grid gap-4">
-              <div className="neo-panel p-6">
-                <div className="mb-3 flex items-center gap-3">
-                  <div className="flex h-12 w-12 items-center justify-center border-[2px] border-black bg-[#FFD700]">
-                    <Crown className="h-6 w-6" />
+              <section className="neo-panel p-6">
+                <div className="mb-4 flex items-center gap-3">
+                  <div className="flex h-11 w-11 items-center justify-center border-[2px] border-black bg-[#FF6B6B]">
+                    <TrendingUp className="h-5 w-5 text-white" />
                   </div>
                   <div>
-                    <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Level Journey</p>
-                    <h2 className="text-2xl font-black">
-                      {level === LEVEL_ORDER[LEVEL_ORDER.length - 1] ? 'Top Tier Reached' : `Next: ${nextLevelName}`}
-                    </h2>
+                    <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Activity Snapshot</p>
+                    <h3 className="text-2xl font-black">Wallet + Circle Breakdown</h3>
                   </div>
                 </div>
-                <div className="mb-4 flex items-end justify-between gap-3">
-                  <div>
-                    <p className="text-4xl font-black">{nextLevelProgress}%</p>
-                    <p className="text-sm text-black/60">Toward your next reputation tier</p>
+                <div className="grid gap-4 xl:grid-cols-2 2xl:grid-cols-4">
+                  <div className="border-[2px] border-black bg-[#FEFAE0] p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Swap Activity</p>
+                      <ArrowRightLeft className="h-6 w-6 text-[#DDA0DD]" />
+                    </div>
+                    <div className="mt-4 space-y-3">
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-[0.08em] text-black/45">Wallet Swaps</p>
+                        <p className="mt-2 text-2xl font-black">{swapActionCount}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-[0.08em] text-black/45">Latest Amount</p>
+                        <p className="text-wrap-safe mt-2 text-xl font-black">{latestSwapLog ? getWalletActionLabel(latestSwapLog) : 'No swaps yet'}</p>
+                      </div>
+                    </div>
                   </div>
-                  <div
-                    className="border-[2px] border-black px-3 py-1.5 text-xs font-black uppercase tracking-[0.08em]"
-                    style={{ backgroundColor: levelColor }}
-                  >
-                    {levelName}
+
+                  <div className="border-[2px] border-black bg-[#FEFAE0] p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">DCA Activity</p>
+                      <Repeat className="h-6 w-6 text-[#FFE66D]" />
+                    </div>
+                    <div className="mt-4 space-y-3">
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-[0.08em] text-black/45">Wallet DCA Orders</p>
+                        <p className="mt-2 text-2xl font-black">{dcaActionCount}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-[0.08em] text-black/45">Latest Plan</p>
+                        <p className="text-wrap-safe mt-2 text-xl font-black">{latestDcaLog ? getWalletActionLabel(latestDcaLog) : 'No DCA yet'}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="border-[2px] border-black bg-[#FEFAE0] p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Lending Activity</p>
+                      <PiggyBank className="h-6 w-6 text-[#96CEB4]" />
+                    </div>
+                    <div className="mt-4 space-y-3">
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-[0.08em] text-black/45">Wallet Lending Actions</p>
+                        <p className="mt-2 text-2xl font-black">{lendingActionCount}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-[0.08em] text-black/45">Latest Amount</p>
+                        <p className="text-wrap-safe mt-2 text-xl font-black">{latestLendingLog ? getWalletActionLabel(latestLendingLog) : 'No lending yet'}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="border-[2px] border-black bg-[#FEFAE0] p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Circle + Reputation</p>
+                      <Users className="h-6 w-6 text-[#FF6B6B]" />
+                    </div>
+                    <div className="mt-4 grid gap-3">
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-[0.08em] text-black/45">Circle Events</p>
+                        <p className="mt-2 text-2xl font-black">{totalCircleActivityCount}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-[0.08em] text-black/45">Reputation Score</p>
+                        <p className="mt-2 text-2xl font-black">{stats?.reputationScore || 0}</p>
+                      </div>
+                    </div>
                   </div>
                 </div>
-                <div className="neo-progress">
-                  <div className="neo-progress-bar bg-[#FF6B6B]" style={{ width: `${nextLevelProgress}%` }} />
+              </section>
+
+              <section className="grid gap-5 lg:grid-cols-2">
+                <div className="neo-panel p-6">
+                  <div className="mb-3 flex items-center gap-3">
+                    <div className="flex h-12 w-12 items-center justify-center border-[2px] border-black bg-[#FFD700]">
+                      <Crown className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Level Journey</p>
+                      <h2 className="text-2xl font-black">
+                        {level === LEVEL_ORDER[LEVEL_ORDER.length - 1] ? 'Top Tier Reached' : `Next: ${nextLevelName}`}
+                      </h2>
+                    </div>
+                  </div>
+                  <div className="mb-4 flex items-end justify-between gap-3">
+                    <div>
+                      <p className="text-4xl font-black">{nextLevelProgress}%</p>
+                      <p className="text-sm text-black/60">Toward your next reputation tier</p>
+                    </div>
+                    <div
+                      className="border-[2px] border-black px-3 py-1.5 text-xs font-black uppercase tracking-[0.08em]"
+                      style={{ backgroundColor: levelColor }}
+                    >
+                      {levelName}
+                    </div>
+                  </div>
+                  <div className="neo-progress">
+                    <div className="neo-progress-bar bg-[#FF6B6B]" style={{ width: `${nextLevelProgress}%` }} />
+                  </div>
                 </div>
-                {level !== LEVEL_ORDER[LEVEL_ORDER.length - 1] && (
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+
+                <div className="neo-panel p-6">
+                  <div className="mb-3 flex items-center gap-3">
+                    <div className="flex h-12 w-12 items-center justify-center border-[2px] border-black bg-[#96CEB4]">
+                      <Medal className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Journey Snapshot</p>
+                      <h2 className="text-2xl font-black">Trust + Progress</h2>
+                    </div>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
                     <div className="border-[2px] border-black bg-[#FEFAE0] p-4">
-                      <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Circles Milestone</p>
+                      <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Current Level</p>
+                      <p className="mt-2 text-2xl font-black">{levelName}</p>
+                    </div>
+                    <div className="border-[2px] border-black bg-[#FEFAE0] p-4">
+                      <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Earned Badges</p>
+                      <p className="mt-2 text-2xl font-black">{earnedBadges.length}/{badges.length}</p>
+                    </div>
+                    <div className="border-[2px] border-black bg-[#FEFAE0] p-4">
+                      <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Circles To Next Tier</p>
                       <p className="mt-2 text-2xl font-black">{currentCirclesJoined}/{nextRequirements.minCircles}</p>
                     </div>
                     <div className="border-[2px] border-black bg-[#FEFAE0] p-4">
                       <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">On-Time Rate</p>
-                      <p className="mt-2 text-xl font-black">
+                      <p className="mt-2 text-2xl font-black">
                         {hasPaymentHistory ? `${currentOnTimeRate}%` : 'No record'}
-                        {nextRequirements.minRate > 0 ? ` / ${nextRequirements.minRate}%` : ''}
                       </p>
                     </div>
                   </div>
-                )}
-              </div>
-
-              <div className="neo-panel p-6">
-                <div className="mb-3 flex items-center gap-3">
-                  <div className="flex h-12 w-12 items-center justify-center border-[2px] border-black bg-[#4ECDC4]">
-                    <TrendingUp className="h-6 w-6" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Activity Mix</p>
-                    <h2 className="text-2xl font-black">Circle + StarkZap</h2>
-                  </div>
                 </div>
+              </section>
+            </TabsContent>
 
-                {activityTotal > 0 ? (
-                  <div className="space-y-3">
-                    {[
-                      { label: 'Swaps', value: swapCount, color: '#4ECDC4' },
-                      { label: 'DCA Orders', value: dcaCount, color: '#FFE66D' },
-                      { label: 'Lending Actions', value: lendingCount, color: '#96CEB4' },
-                    ].map((item) => {
-                      const percentage = Math.round((item.value / activityTotal) * 100);
-
-                      return (
-                        <div key={item.label}>
-                          <div className="mb-2 flex items-center justify-between gap-3 text-sm font-black uppercase tracking-[0.08em]">
-                            <span>{item.label}</span>
-                            <span>{item.value} • {percentage}%</span>
-                          </div>
-                          <div className="neo-progress">
-                            <div className="neo-progress-bar" style={{ width: `${percentage}%`, backgroundColor: item.color }} />
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="border-[2px] border-black bg-[#FEFAE0] p-4">
-                    <p className="text-sm leading-relaxed text-black/65">
-                      No StarkZap actions yet. Once you swap, create a DCA order, or use lending, the activity mix will populate here.
-                    </p>
-                  </div>
-                )}
-
-                <div className="mt-5 grid grid-cols-2 gap-3">
-                  <div className="border-[2px] border-black bg-[#FEFAE0] p-4">
-                    <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Monthly Commitment</p>
-                    <p className="mt-2 text-2xl font-black">{formatAmountShort(totalMonthlyCommitment)}</p>
-                  </div>
-                  <div className="border-[2px] border-black bg-[#FEFAE0] p-4">
-                    <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Earned Badges</p>
-                    <p className="mt-2 text-2xl font-black">{earnedBadges.length}/{badges.length}</p>
-                  </div>
-                </div>
-              </div>
-            </section>
-          </div>
-
-          <div className="mt-10 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-            {[
-              {
-                icon: Wallet,
-                color: '#4ECDC4',
-                value: walletBalanceValue,
-                suffix: walletBalanceSymbol,
-                label: 'Wallet Balance',
-                helper: 'Connected wallet balance',
-              },
-              {
-                icon: Users,
-                color: '#FF6B6B',
-                value: portfolioCircleCount,
-                suffix: null,
-                label: 'Circle Positions',
-                helper: 'Created or joined with this wallet',
-              },
-              {
-                icon: CheckCircle,
-                color: '#4ECDC4',
-                value: stats?.paymentsMade || 0,
-                suffix: null,
-                label: 'Payments Made',
-                helper: 'Confirmed contribution payments',
-              },
-              {
-                icon: TrendingUp,
-                color: '#96CEB4',
-                value: hasPaymentHistory ? `${currentOnTimeRate}%` : 'No data',
-                suffix: null,
-                label: 'On-Time Rate',
-                helper: hasPaymentHistory ? 'Payment punctuality' : 'No repayments yet',
-              },
-              {
-                icon: CheckCircle,
-                color: '#FFE66D',
-                value: currentCirclesJoined > 0 ? `${completionRate}%` : 'No data',
-                suffix: null,
-                label: 'Completion',
-                helper: currentCirclesJoined > 0 ? 'Circle completion score' : 'No completed circles yet',
-              },
-            ].map((stat, index) => (
-              <div key={stat.label} className={`animate-fade-in stagger-${index + 2} neo-stat-tile text-center`}>
-                <stat.icon className="w-7 h-7 mx-auto mb-2" style={{ color: stat.color }} />
-                <p className="text-[2.15rem] font-black leading-none break-words">{stat.value}</p>
-                {stat.suffix ? (
-                  <p className="mt-2 text-xs font-black uppercase tracking-[0.08em] text-black/55">{stat.suffix}</p>
-                ) : null}
-                <p className="mt-2 text-xs font-bold text-gray-600 uppercase">{stat.label}</p>
-                <p className="mt-1 text-xs text-black/55">{stat.helper}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <div className="page-shell py-10 md:py-12">
-        <Tabs defaultValue="portfolio" className="w-full animate-fade-in">
-          <TabsList className="sticky top-[5.8rem] z-20 mb-8 h-auto w-full flex-wrap justify-start rounded-none border-[3px] border-black bg-white p-1.5 shadow-[0_4px_0px_0px_#1a1a1a]">
-            <TabsTrigger value="portfolio" className="rounded-none font-bold text-base data-[state=active]:bg-black data-[state=active]:text-white px-6 py-2.5">
-              <Wallet className="w-5 h-5 mr-2" />
-              Investments
-            </TabsTrigger>
-            <TabsTrigger value="circles" className="rounded-none font-bold text-base data-[state=active]:bg-black data-[state=active]:text-white px-6 py-2.5">
-              <Users className="w-5 h-5 mr-2" />
-              Circles ({portfolioCircleCount})
-            </TabsTrigger>
-            <TabsTrigger value="badges" className="rounded-none font-bold text-base data-[state=active]:bg-black data-[state=active]:text-white px-6 py-2.5">
-              <Medal className="w-5 h-5 mr-2" />
-              Badges ({earnedBadges.length})
-            </TabsTrigger>
-            <TabsTrigger value="stats" className="rounded-none font-bold text-base data-[state=active]:bg-black data-[state=active]:text-white px-6 py-2.5">
-              <TrendingUp className="w-5 h-5 mr-2" />
-              Stats
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="portfolio" className="space-y-6">
-            <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              {[
-                { label: 'Circle Positions', value: portfolioCircleCount, helper: `${formatAmountShort(totalMonthlyCommitment)} committed monthly`, color: '#FF6B6B' },
-                { label: 'Swaps', value: swapCount, helper: swapVolumeText, color: '#4ECDC4' },
-                { label: 'DCA Orders', value: dcaCount, helper: dcaCount > 0 ? `${dcaBudgetText} total` : dcaBudgetText, color: '#FFE66D' },
-                { label: 'Lending Actions', value: lendingCount, helper: lendingFlowText, color: '#96CEB4' },
-              ].map((item) => (
-                <div key={item.label} className="border-[2px] border-black bg-white p-5">
-                  <div className="mb-3 h-2 w-16 border-[2px] border-black" style={{ backgroundColor: item.color }} />
-                  <p className="text-sm font-bold uppercase tracking-[0.08em] text-black/60">{item.label}</p>
-                  <p className="mt-2 text-3xl font-black">{item.value}</p>
-                  <p className="mt-2 text-sm leading-relaxed text-black/60">{item.helper}</p>
-                </div>
-              ))}
-            </section>
-
-            <section className="grid gap-5 xl:grid-cols-[0.92fr_1.08fr]">
-              <div className="neo-panel p-6">
-                <div className="mb-4 flex items-center gap-3">
-                  <div className="flex h-11 w-11 items-center justify-center border-[2px] border-black bg-[#4ECDC4]">
-                    <ArrowRightLeft className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Recent StarkZap Activity</p>
-                    <h3 className="text-2xl font-black">Latest Wallet Moves</h3>
-                  </div>
-                </div>
-                {recentLogs.length > 0 ? (
-                  <div className="space-y-3">
-                    {recentLogs.map((log) => {
-                      const meta = LOG_KIND_META[log.kind];
-                      const Icon = meta.icon;
-                      const amountText = getStarkZapLogAmountText(log);
-
-                      return (
-                        <div key={log.id} className="border-[2px] border-black bg-[#FEFAE0] p-4">
-                          <div className="flex items-start gap-3">
-                            <div
-                              className="flex h-10 w-10 shrink-0 items-center justify-center border-[2px] border-black"
-                              style={{ backgroundColor: meta.color }}
-                            >
-                              <Icon className="h-4 w-4 text-black" />
-                            </div>
-                            <div className="min-w-0">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <p className="font-black">{meta.label}</p>
-                                <span className={`inline-flex border-[2px] border-black px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.08em] ${getLogStatusClasses(log.status)}`}>
-                                  {log.status}
-                                </span>
-                              </div>
-                              {amountText ? (
-                                <p className="mt-1 text-sm font-black text-black/80">{amountText}</p>
-                              ) : null}
-                              <p className="mt-1 text-sm leading-relaxed text-black/70">{log.summary}</p>
-                              <p className="mt-2 text-xs font-black uppercase tracking-[0.08em] text-black/45">
-                                {new Date(log.updatedAt).toLocaleString()}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="border-[2px] border-black bg-[#FEFAE0] p-6 text-center">
-                    <FileText className="mx-auto mb-3 h-10 w-10 text-black/25" />
-                    <h4 className="text-xl font-black">No wallet moves yet</h4>
-                    <p className="mt-2 text-sm leading-relaxed text-black/65">
-                      Your last swaps, DCA orders, and lending actions will show here once you start using the StarkZap tools.
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              <div className="neo-panel p-6">
-                <div className="mb-4 flex items-center gap-3">
-                  <div className="flex h-11 w-11 items-center justify-center border-[2px] border-black bg-[#FF6B6B]">
-                    <Wallet className="h-5 w-5 text-white" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Investment Snapshot</p>
-                    <h3 className="text-2xl font-black">Portfolio Notes</h3>
-                  </div>
-                </div>
-
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="border-[2px] border-black bg-[#FEFAE0] p-4">
-                    <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Circle Exposure</p>
-                    <p className="mt-2 text-2xl font-black">{formatAmountShort(totalMonthlyCommitment)}</p>
-                    <p className="mt-2 text-sm text-black/65">Total monthly circle commitment across every position.</p>
-                  </div>
-                  <div className="border-[2px] border-black bg-[#FEFAE0] p-4">
-                    <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Swap Volume</p>
-                    <p className="mt-2 text-2xl font-black break-words">{swapVolumeText}</p>
-                    <p className="mt-2 text-sm text-black/65">Total token amount routed through wallet swaps.</p>
-                  </div>
-                  <div className="border-[2px] border-black bg-[#FEFAE0] p-4">
-                    <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">DCA Budgeted</p>
-                    <p className="mt-2 text-2xl font-black break-words">{dcaBudgetText}</p>
-                    <p className="mt-2 text-sm text-black/65">
-                      {dcaCount > 0 ? `Per cycle: ${dcaCycleText}` : 'Recurring DCA totals will appear here.'}
-                    </p>
-                  </div>
-                  <div className="border-[2px] border-black bg-[#FEFAE0] p-4">
-                    <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Lending Flow</p>
-                    <p className="mt-2 text-2xl font-black break-words">{lendingFlowText}</p>
-                    <p className="mt-2 text-sm text-black/65">Deposited and withdrawn token amounts recorded for lending.</p>
-                  </div>
-                  <div className="border-[2px] border-black bg-white p-4 sm:col-span-2">
-                    <div className="mb-3 flex items-center justify-between gap-3">
-                      <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Suggested Next Step</p>
-                      <Link to="/circles" className="text-xs font-black uppercase tracking-[0.08em] underline underline-offset-4">
-                        Explore
-                      </Link>
+            <TabsContent value="activity" className="space-y-6">
+              <section className="border-b-[2px] border-black bg-white">
+                <div className="px-6 py-6 md:px-8">
+                  <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
+                    <div>
+                      <div className="mb-3 inline-flex items-center gap-2 border-[2px] border-black bg-[#DDA0DD] px-3 py-1.5 text-sm font-black uppercase tracking-[0.08em]">
+                        <FileText className="h-4 w-4" />
+                        Wallet Activity Feed
+                      </div>
+                      <h2 className="mb-2 text-3xl font-black md:text-4xl">Activity</h2>
+                      <p className="max-w-3xl text-[15px] leading-relaxed text-black/70">
+                        Review your StarkZap swap, DCA, and lending actions together with CircleSave contract events tied to this wallet and the circles it belongs to.
+                      </p>
                     </div>
-                    <p className="text-lg font-black">
-                      {circles.length === 0
-                        ? 'Start with a circle to turn your wallet into a savings position.'
-                        : swapCount === 0
-                          ? 'Route into STRK with swap so contributions are ready when your next payment is due.'
-                          : dcaCount === 0
-                            ? 'Set up a DCA order to build your contribution balance automatically.'
-                            : 'You already have a multi-product footprint. Check logs and tighten your next position.'}
-                    </p>
-                    <div className="mt-4 flex flex-wrap gap-3">
-                      <Link to="/swap" className="neo-button-secondary inline-flex items-center">
-                        Open Swap
-                      </Link>
-                      <Link to="/dca" className="neo-button-primary inline-flex items-center">
-                        Open DCA
-                      </Link>
-                    </div>
+
+                    <Button variant="outline" onClick={refreshActivity} className="border-[2px] border-black">
+                      <RefreshCcw className="h-4 w-4" />
+                      Refresh Activity
+                    </Button>
                   </div>
                 </div>
-              </div>
-            </section>
+              </section>
 
-            <section className="neo-card overflow-hidden p-0">
-              <div className="border-b-[2px] border-black bg-white px-6 py-5">
-                <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                  <div>
-                    <h3 className="text-2xl font-black">Circle Positions</h3>
-                    <p className="text-sm text-black/60">All circles linked to this wallet, including commitment size and current status.</p>
+              <section className="grid gap-4 md:grid-cols-4">
+                {[
+                  { label: 'Total Entries', value: combinedActivityEntryCount, color: '#DDA0DD' },
+                  { label: 'Swap Actions', value: swapActionCount, color: '#DDA0DD' },
+                  { label: 'DCA Orders', value: dcaActionCount, color: '#FFE66D' },
+                  { label: 'Lending Actions', value: lendingActionCount, color: '#96CEB4' },
+                ].map((item) => (
+                  <div key={item.label} className="border-[2px] border-black bg-white p-5">
+                    <div className="mb-3 h-2 w-16 border-[2px] border-black" style={{ backgroundColor: item.color }} />
+                    <p className="text-sm font-bold uppercase tracking-[0.08em] text-black/60">{item.label}</p>
+                    <p className="mt-2 text-3xl font-black">{item.value}</p>
                   </div>
-                  <Link to="/circles" className="text-sm font-black uppercase tracking-[0.08em] underline underline-offset-4">
-                    Discover More Circles
-                  </Link>
-                </div>
-              </div>
-              {circlesLoading ? (
-                <div className="p-10 text-center">
-                  <Loader2 className="w-10 h-10 animate-spin mx-auto mb-4 text-[#FF6B6B]" />
-                  <p className="font-bold text-gray-600">Loading your circles...</p>
-                </div>
-              ) : circles.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <Table className="min-w-[980px]">
-                  <TableHeader className="bg-black [&_tr]:border-black">
-                    <TableRow className="border-black hover:bg-black">
-                      <TableHead className="px-4 py-4 text-xs font-black uppercase tracking-[0.08em] text-white">Circle</TableHead>
-                      <TableHead className="px-4 py-4 text-xs font-black uppercase tracking-[0.08em] text-white">Category</TableHead>
-                      <TableHead className="px-4 py-4 text-xs font-black uppercase tracking-[0.08em] text-white">Monthly</TableHead>
-                      <TableHead className="px-4 py-4 text-xs font-black uppercase tracking-[0.08em] text-white">Members</TableHead>
-                      <TableHead className="px-4 py-4 text-xs font-black uppercase tracking-[0.08em] text-white">Status</TableHead>
-                      <TableHead className="px-4 py-4 text-xs font-black uppercase tracking-[0.08em] text-white">Action</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {circles.map((circle) => (
-                      <TableRow key={circle.id} className="border-black bg-white hover:bg-[#FEFAE0]">
-                        <TableCell className="px-4 py-4 align-top">
-                          <p className="font-black">{circle.name}</p>
-                          <p className="mt-1 max-w-[280px] whitespace-normal text-sm text-black/60">{circle.description}</p>
-                        </TableCell>
-                        <TableCell className="px-4 py-4 align-top text-sm font-bold">{getCategoryLabel(circle.category)}</TableCell>
-                        <TableCell className="px-4 py-4 align-top text-sm font-bold">{formatAmount(circle.monthlyAmount)}</TableCell>
-                        <TableCell className="px-4 py-4 align-top text-sm text-black/65">
-                          {circle.currentMembers}/{circle.maxMembers}
-                        </TableCell>
-                        <TableCell className="px-4 py-4 align-top">
-                          <span className={`inline-flex border-[2px] border-black px-3 py-1 text-xs font-black uppercase tracking-[0.08em] ${getCircleStatusClasses(circle.status)}`}>
-                            {circle.status}
-                          </span>
-                        </TableCell>
-                        <TableCell className="px-4 py-4 align-top">
-                          <Link
-                            to={`/circles/${circle.id}`}
-                            className="inline-flex items-center gap-2 text-sm font-black underline underline-offset-4"
-                          >
-                            View Circle
-                            <ExternalLink className="h-4 w-4" />
-                          </Link>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-                </div>
-              ) : (
-                <div className="p-12 text-center">
-                  <Users className="w-14 h-14 mx-auto mb-4 text-gray-300" />
-                  <h4 className="text-2xl font-black mb-2">No Circle Positions Yet</h4>
-                  <p className="text-gray-600 text-lg">Join or create circles to start building your savings portfolio.</p>
-                </div>
-              )}
-            </section>
+                ))}
+              </section>
 
-            <section className="neo-card overflow-hidden p-0">
-              <div className="border-b-[2px] border-black bg-white px-6 py-5">
-                <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                  <div>
-                    <h3 className="text-2xl font-black">Wallet Activity</h3>
-                    <p className="text-sm text-black/60">Swaps, DCA plans, and lending transactions for this wallet, all in one place.</p>
-                  </div>
-                  <Link to="/logs" className="inline-flex items-center gap-2 text-sm font-black uppercase tracking-[0.08em] underline underline-offset-4">
-                    Open Full Logs
-                    <FileText className="h-4 w-4" />
-                  </Link>
-                </div>
-              </div>
-              {myLogs.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <Table className="min-w-[920px]">
-                  <TableHeader className="bg-black [&_tr]:border-black">
-                    <TableRow className="border-black hover:bg-black">
-                      <TableHead className="px-4 py-4 text-xs font-black uppercase tracking-[0.08em] text-white">Type</TableHead>
-                      <TableHead className="px-4 py-4 text-xs font-black uppercase tracking-[0.08em] text-white">Amount</TableHead>
-                      <TableHead className="px-4 py-4 text-xs font-black uppercase tracking-[0.08em] text-white">Summary</TableHead>
-                      <TableHead className="px-4 py-4 text-xs font-black uppercase tracking-[0.08em] text-white">Status</TableHead>
-                      <TableHead className="px-4 py-4 text-xs font-black uppercase tracking-[0.08em] text-white">Updated</TableHead>
-                      <TableHead className="px-4 py-4 text-xs font-black uppercase tracking-[0.08em] text-white">Voyager</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {myLogs.map((log) => {
-                      const meta = LOG_KIND_META[log.kind];
-                      const Icon = meta.icon;
-                      const amountText = getStarkZapLogAmountText(log);
-
-                      return (
-                        <TableRow key={log.id} className="border-black bg-white hover:bg-[#FEFAE0]">
-                          <TableCell className="px-4 py-4 align-top">
-                            <div className="flex items-center gap-3">
-                              <div
-                                className="flex h-10 w-10 items-center justify-center border-[2px] border-black"
-                                style={{ backgroundColor: meta.color }}
-                              >
-                                <Icon className="h-4 w-4 text-black" />
-                              </div>
-                              <div>
-                                <p className="font-black">{meta.label}</p>
-                                <p className="text-xs uppercase tracking-[0.08em] text-black/50">{log.title}</p>
-                              </div>
-                            </div>
-                          </TableCell>
-                          <TableCell className="px-4 py-4 align-top text-sm font-black text-black/80">
-                            {amountText || 'Pending amount data'}
-                          </TableCell>
-                          <TableCell className="px-4 py-4 align-top">
-                            <p className="max-w-[360px] whitespace-normal text-[15px] leading-relaxed text-black/75">{log.summary}</p>
-                            {log.error && <p className="mt-2 text-sm text-red-600">{log.error}</p>}
-                          </TableCell>
-                          <TableCell className="px-4 py-4 align-top">
-                            <span className={`inline-flex border-[2px] border-black px-3 py-1 text-xs font-black uppercase tracking-[0.08em] ${getLogStatusClasses(log.status)}`}>
-                              {log.status}
-                            </span>
-                          </TableCell>
-                          <TableCell className="px-4 py-4 align-top text-sm text-black/65">
-                            {new Date(log.updatedAt).toLocaleString()}
-                          </TableCell>
-                          <TableCell className="px-4 py-4 align-top">
-                            <a
-                              href={log.explorerUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-2 text-sm font-black underline underline-offset-4"
-                            >
-                              Open
-                              <ExternalLink className="h-4 w-4" />
-                            </a>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-                </div>
-              ) : (
-                <div className="p-12 text-center">
-                  <FileText className="w-14 h-14 mx-auto mb-4 text-gray-300" />
-                  <h4 className="text-2xl font-black mb-2">No Wallet Activity Yet</h4>
-                  <p className="mx-auto max-w-2xl text-gray-600 text-lg">
-                    Once you use swap, DCA, or lending, those actions will show up here beside your circle positions.
+              {activityError ? (
+                <section className="neo-card p-8">
+                  <h3 className="text-2xl font-black">Contract activity is delayed right now</h3>
+                  <p className="mt-3 max-w-2xl text-[15px] leading-relaxed text-black/70">
+                    {activityError} StarkZap wallet actions saved in this browser can still appear below while contract reads recover.
                   </p>
-                  <div className="mt-6 flex flex-wrap justify-center gap-3">
-                    <Link to="/sdk" className="neo-button-secondary inline-flex items-center">
-                      Open SDK Guide
-                    </Link>
-                    <Link to="/swap" className="neo-button-primary inline-flex items-center">
-                      Open Swap
-                    </Link>
+                </section>
+              ) : null}
+
+              {activityRows.length > 0 ? (
+                <section className="neo-card overflow-hidden p-0">
+                  <div className="overflow-x-auto">
+                    <Table className="min-w-[720px]">
+                      <TableHeader className="bg-black [&_tr]:border-black">
+                        <TableRow className="border-black hover:bg-black">
+                          <TableHead className="px-4 py-4 text-xs font-black uppercase tracking-[0.08em] text-white">Event</TableHead>
+                          <TableHead className="px-4 py-4 text-xs font-black uppercase tracking-[0.08em] text-white">Value</TableHead>
+                          <TableHead className="px-4 py-4 text-xs font-black uppercase tracking-[0.08em] text-white">Type</TableHead>
+                          <TableHead className="px-4 py-4 text-xs font-black uppercase tracking-[0.08em] text-white">Updated</TableHead>
+                          <TableHead className="px-4 py-4 text-right text-xs font-black uppercase tracking-[0.08em] text-white">Open</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {activityRows.map((row) => {
+                          const meta = LOG_KIND_META[row.kind];
+                          const Icon = meta.icon;
+
+                          return (
+                            <TableRow
+                              key={row.id}
+                              tabIndex={0}
+                              role="button"
+                              onClick={() => setSelectedActivityRow(row)}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter' || event.key === ' ') {
+                                  event.preventDefault();
+                                  setSelectedActivityRow(row);
+                                }
+                              }}
+                              className="cursor-pointer border-black bg-white transition-colors hover:bg-[#FEFAE0] focus-visible:bg-[#FEFAE0] focus-visible:outline-none"
+                            >
+                              <TableCell className="px-4 py-4 align-top">
+                                <div className="flex items-center gap-3">
+                                  <div
+                                    className="flex h-10 w-10 items-center justify-center border-[2px] border-black"
+                                    style={{ backgroundColor: meta.color }}
+                                  >
+                                    <Icon className="h-4 w-4 text-black" />
+                                  </div>
+                                  <div>
+                                    <p className="font-black">{row.title}</p>
+                                    <p className="text-xs uppercase tracking-[0.08em] text-black/50">
+                                      {meta.label} • {row.provider}
+                                    </p>
+                                  </div>
+                                </div>
+                              </TableCell>
+                              <TableCell className="px-4 py-4 align-top text-sm font-black text-black/80">
+                                {row.amountText || 'Protocol event'}
+                              </TableCell>
+                              <TableCell className="px-4 py-4 align-top">
+                                <span className={`inline-flex border-[2px] border-black px-3 py-1 text-xs font-black uppercase tracking-[0.08em] ${getActivityToneClasses(row.tone)}`}>
+                                  {row.badgeText}
+                                </span>
+                              </TableCell>
+                              <TableCell className="px-4 py-4 align-top text-sm text-black/65">
+                                {row.updatedAtLabel}
+                              </TableCell>
+                              <TableCell className="px-4 py-4 align-top text-right">
+                                <span className="inline-flex items-center gap-2 text-sm font-black text-black/70">
+                                  Details
+                                  <MoveRight className="h-4 w-4" />
+                                </span>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
                   </div>
+                </section>
+              ) : (
+                <div className="neo-card p-12 text-center">
+                  <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center border-[3px] border-black bg-[#FEFAE0]">
+                    <FileText className="h-9 w-9" />
+                  </div>
+                  <h2 className="mb-3 text-3xl font-black">{activityLoading ? 'Loading Activity...' : 'No Wallet Activity Yet'}</h2>
+                  <p className="mx-auto max-w-2xl text-[15px] leading-relaxed text-black/70">
+                    {activityLoading
+                      ? 'Fetching wallet actions and contract events tied to this account.'
+                      : 'Use swap, DCA, lending, or circle flows and your wallet activity will appear here.'}
+                  </p>
                 </div>
               )}
-            </section>
-          </TabsContent>
+            </TabsContent>
 
           <TabsContent value="circles">
             {circlesLoading ? (
@@ -854,7 +719,7 @@ export function ProfilePage() {
                 <p className="font-bold text-gray-600 text-lg">Loading circles...</p>
               </div>
             ) : circles.length > 0 ? (
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="grid gap-6 md:grid-cols-2 2xl:grid-cols-2">
                 {circles.map((circle, index) => (
                   <div key={circle.id} className={`animate-fade-in stagger-${Math.min(index + 1, 6)}`}>
                     <CircleCard circle={circle} />
@@ -870,9 +735,24 @@ export function ProfilePage() {
             )}
           </TabsContent>
 
-          <TabsContent value="badges">
+          <TabsContent value="reputation">
             <div className="neo-card p-8">
-              <h3 className="text-2xl font-black mb-6">Earned Badges</h3>
+              <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Identity Layer</p>
+                  <h3 className="text-2xl font-black">Reputation & Badges</h3>
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  <div className="neo-chip bg-[#FEFAE0]">
+                    <Trophy className="h-4 w-4 text-[#FFD700]" />
+                    {stats?.reputationScore || 0} REP
+                  </div>
+                  <div className="neo-chip bg-white">
+                    <Medal className="h-4 w-4 text-[#FF6B6B]" />
+                    {earnedBadges.length}/{badges.length} Earned
+                  </div>
+                </div>
+              </div>
               {earnedBadges.length > 0 ? (
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
                   {earnedBadges.map((badge, index) => (
@@ -910,7 +790,7 @@ export function ProfilePage() {
             </div>
           </TabsContent>
 
-          <TabsContent value="stats">
+          <TabsContent value="analytics">
             <div className="grid md:grid-cols-2 gap-6">
               <div className="neo-card p-8 animate-fade-in">
                 <h3 className="text-2xl font-black mb-6 flex items-center gap-2">
@@ -1010,8 +890,90 @@ export function ProfilePage() {
               </div>
             </div>
           </TabsContent>
+          </div>
         </Tabs>
       </div>
+
+      <Dialog open={!!selectedActivityRow} onOpenChange={(open) => !open && setSelectedActivityRow(null)}>
+        <DialogContent className="max-w-2xl border-[3px] border-black bg-white p-0 shadow-[8px_8px_0px_0px_#1a1a1a]">
+          {selectedActivityRow && selectedActivityMeta && SelectedActivityIcon ? (
+            <div className="p-6 md:p-7">
+              <DialogHeader className="border-b-[2px] border-black pb-5 text-left">
+                <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                  <div className="flex items-start gap-4">
+                    <div
+                      className="flex h-12 w-12 shrink-0 items-center justify-center border-[2px] border-black"
+                      style={{ backgroundColor: selectedActivityMeta.color }}
+                    >
+                      <SelectedActivityIcon className="h-5 w-5 text-black" />
+                    </div>
+                    <div>
+                      <DialogTitle>{selectedActivityRow.title}</DialogTitle>
+                      <DialogDescription className="mt-2 text-sm leading-relaxed text-black/65">
+                        {selectedActivityMeta.label} activity for {formatAddress(selectedActivityRow.account)}
+                      </DialogDescription>
+                    </div>
+                  </div>
+
+                  <span className={`inline-flex w-fit border-[2px] border-black px-3 py-1 text-xs font-black uppercase tracking-[0.08em] ${getActivityToneClasses(selectedActivityRow.tone)}`}>
+                    {selectedActivityRow.badgeText}
+                  </span>
+                </div>
+              </DialogHeader>
+
+              <div className="mt-6 grid gap-4 md:grid-cols-2">
+                <div className="border-[2px] border-black bg-[#FEFAE0] p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.08em] text-black/50">Value</p>
+                  <p className="mt-2 text-2xl font-black">
+                    {selectedActivityRow.amountText || 'Protocol event'}
+                  </p>
+                </div>
+
+                <div className="border-[2px] border-black bg-[#FEFAE0] p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.08em] text-black/50">Updated</p>
+                  <p className="mt-2 text-lg font-black">{selectedActivityRow.updatedAtLabel}</p>
+                </div>
+
+                <div className="border-[2px] border-black bg-white p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.08em] text-black/50">Provider</p>
+                  <p className="mt-2 text-lg font-black">{selectedActivityRow.provider}</p>
+                </div>
+
+                <div className="border-[2px] border-black bg-white p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.08em] text-black/50">Account</p>
+                  <p className="text-wrap-safe mt-2 font-mono text-sm text-black/75">{selectedActivityRow.account}</p>
+                </div>
+              </div>
+
+              <div className="mt-4 border-[2px] border-black bg-white p-4">
+                <p className="text-xs font-black uppercase tracking-[0.08em] text-black/50">Summary</p>
+                <p className="mt-3 text-[15px] leading-relaxed text-black/80">{selectedActivityRow.summary}</p>
+              </div>
+
+              <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-between">
+                <a
+                  href={selectedActivityRow.explorerUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center gap-2 border-[2px] border-black bg-[#FEFAE0] px-4 py-3 text-sm font-black uppercase tracking-[0.08em] shadow-[3px_3px_0px_0px_#1a1a1a] transition-transform hover:-translate-y-0.5"
+                >
+                  {selectedActivityRow.explorerLabel} on Voyager
+                  <ExternalLink className="h-4 w-4" />
+                </a>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="border-[2px] border-black"
+                  onClick={() => setSelectedActivityRow(null)}
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

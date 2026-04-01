@@ -1,6 +1,7 @@
 import { useParams, Link } from 'react-router-dom';
 import { useCircleDetail, useJoinCircle, useContribute, useStartCircle } from '@/hooks/useCircle';
 import { useWallet } from '@/hooks/useWallet';
+import { CircleFundingStudio } from '@/components/circles/CircleFundingStudio';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
@@ -184,7 +185,7 @@ export function CircleDetailPage() {
       </div>
 
       {/* Hero Section */}
-      <div className="bg-white border-b-[2px] border-black">
+      <div className="content-divider-bottom bg-white border-b-[2px] border-black">
         <div className="page-shell py-8 md:py-9">
           {/* Header */}
           <div className="animate-fade-in flex flex-wrap items-start justify-between gap-4 mb-6">
@@ -399,71 +400,38 @@ export function CircleDetailPage() {
 
             <TabsContent value="starkzap">
               <div className="space-y-6">
-                <div className="border-[2px] border-black bg-[#FEFAE0] p-5">
-                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                    <div>
-                      <h3 className="text-2xl font-black">StarkZap v2 Workspace</h3>
-                      <p className="mt-1 text-[15px] text-gray-600">
-                        StarkZap tooling now lives on dedicated pages. Use the shared app wallet session for
-                        swap, DCA, lending, and logs instead of a separate SDK login flow.
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap gap-3">
-                      <Link to="/sdk">
-                        <Button variant="outline" className="border-[2px] border-black">
-                          Open SDK Help
-                        </Button>
-                      </Link>
-                      <Link to="/swap">
-                        <Button className="neo-button-primary">
-                          Open Swap
-                        </Button>
-                      </Link>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid md:grid-cols-2 gap-6">
-                  <div className="neo-card p-8 animate-fade-in">
-                    <div className="flex items-center gap-3 mb-5">
-                      <div className="w-12 h-12 bg-[#4ECDC4] border-[3px] border-black flex items-center justify-center">
-                        <ArrowRightLeft className="w-6 h-6 text-white" />
-                      </div>
+                {(canJoin || canContribute) ? (
+                  <CircleFundingStudio
+                    circleAddress={circle.contractAddress}
+                    circleLabel={circle.name}
+                    action={canJoin ? 'join' : 'contribute'}
+                    requiredStrkAmount={canJoin ? collateralAmount : circle.monthlyAmount}
+                  />
+                ) : (
+                  <div className="border-[2px] border-black bg-[#FEFAE0] p-5">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                       <div>
-                        <h3 className="text-2xl font-black">Swap to STRK</h3>
-                        <p className="text-base text-gray-600">Fund contributions from the same wallet</p>
+                        <h3 className="text-2xl font-black">StarkZap Funding Studio</h3>
+                        <p className="mt-1 text-[15px] text-gray-600">
+                          The integrated funding rail unlocks when you can join or contribute. Until then,
+                          you can still use the dedicated swap, DCA, lending, and logs workspaces with the same wallet session.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-3">
+                        <Link to="/swap">
+                          <Button className="neo-button-primary">
+                            Open Swap
+                          </Button>
+                        </Link>
+                        <Link to="/lending">
+                          <Button variant="outline" className="border-[2px] border-black">
+                            Open Lending
+                          </Button>
+                        </Link>
                       </div>
                     </div>
-                    <div className="bg-[#FEFAE0] border-[3px] border-black p-5 mb-5">
-                      <p className="text-base font-bold text-gray-600 mb-1">Powered by</p>
-                      <p className="font-black text-xl">AVNU / Ekubo DEX</p>
-                      <p className="text-base text-gray-500">Best route discovery across Starknet</p>
-                    </div>
-                    <p className="text-base text-gray-600">
-                      Swap ETH, USDC, or any supported token into STRK before contributing so your next payment is ready when the circle opens.
-                    </p>
                   </div>
-
-                  <div className="neo-card p-8 animate-fade-in stagger-1">
-                    <div className="flex items-center gap-3 mb-5">
-                      <div className="w-12 h-12 bg-[#FFE66D] border-[3px] border-black flex items-center justify-center">
-                        <TrendingUp className="w-6 h-6" />
-                      </div>
-                      <div>
-                        <h3 className="text-2xl font-black">Earn While You Wait</h3>
-                        <p className="text-base text-gray-600">Put idle balance to work via Vesu</p>
-                      </div>
-                    </div>
-                    <div className="bg-[#FEFAE0] border-[3px] border-black p-5 mb-5">
-                      <p className="text-base font-bold text-gray-600 mb-1">Lending Protocol</p>
-                      <p className="font-black text-xl">Vesu Finance</p>
-                      <p className="text-base text-gray-500">Deposit and withdraw from the same wallet</p>
-                    </div>
-                    <p className="text-base text-gray-600">
-                      Keep capital productive between contributions or build a DCA routine to arrive funded by the time your next cycle is due.
-                    </p>
-                  </div>
-                </div>
+                )}
               </div>
             </TabsContent>
 

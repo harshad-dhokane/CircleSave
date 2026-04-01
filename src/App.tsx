@@ -1,20 +1,20 @@
 import { useEffect } from 'react';
-import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
+import { BrowserRouter, Navigate, Routes, Route, useLocation } from 'react-router-dom';
 import { StarknetConfig } from '@starknet-react/core';
-import { provider, connectors, chains } from '@/lib/starknet';
+import { provider, paymasterProvider, connectors, chains } from '@/lib/starknet';
 import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
 import { HomePage } from '@/pages/HomePage';
 import { CirclesPage } from '@/pages/CirclesPage';
 import { CircleDetailPage } from '@/pages/CircleDetailPage';
 import { CreateCirclePage } from '@/pages/CreateCirclePage';
-import { DashboardPage } from '@/pages/DashboardPage';
 import { ProfilePage } from '@/pages/ProfilePage';
 import { SdkPage } from '@/pages/SdkPage';
 import { SwapPage } from '@/pages/SwapPage';
 import { DcaPage } from '@/pages/DcaPage';
 import { LendingPage } from '@/pages/LendingPage';
 import { LogsPage } from '@/pages/LogsPage';
+import { primeOnchainActivityFeedCache } from '@/hooks/useOnchainActivityFeed';
 import {
   ApiPage,
   ContractsPage,
@@ -37,28 +37,34 @@ function ScrollToTop() {
 }
 
 function App() {
+  useEffect(() => {
+    void primeOnchainActivityFeedCache();
+  }, []);
+
   return (
     <StarknetConfig
       chains={chains}
       provider={provider}
+      paymasterProvider={paymasterProvider}
       connectors={connectors}
       autoConnect
     >
       <BrowserRouter>
         <ScrollToTop />
-        <div className="min-h-screen">
+        <div className="relative min-h-screen">
           <div className="site-frame flex min-h-screen flex-col">
             <Header />
-            <main className="flex-1 overflow-x-hidden">
+            <main className="flex-1 overflow-x-hidden pt-24">
               <Routes>
                 <Route path="/" element={<HomePage />} />
                 <Route path="/circles" element={<CirclesPage />} />
                 <Route path="/circles/create" element={<CreateCirclePage />} />
                 <Route path="/circles/:id" element={<CircleDetailPage />} />
-                <Route path="/dashboard" element={<DashboardPage />} />
-                <Route path="/profile" element={<ProfilePage />} />
-                <Route path="/profile/:address" element={<ProfilePage />} />
+                <Route path="/dashboard" element={<ProfilePage />} />
+                <Route path="/profile" element={<Navigate to="/dashboard" replace />} />
+                <Route path="/profile/:address" element={<Navigate to="/dashboard" replace />} />
                 <Route path="/sdk" element={<SdkPage />} />
+                <Route path="/help" element={<Navigate to="/sdk" replace />} />
                 <Route path="/swap" element={<SwapPage />} />
                 <Route path="/dca" element={<DcaPage />} />
                 <Route path="/lending" element={<LendingPage />} />

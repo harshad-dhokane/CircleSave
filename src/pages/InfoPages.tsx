@@ -61,7 +61,7 @@ type HeaderProps = {
 
 function InfoPageHeader(props: HeaderProps) {
   return (
-    <div className="border-b-[2px] border-black bg-white">
+    <div className="content-divider-bottom border-b-[2px] border-black bg-white">
       <div className="page-shell py-8 md:py-9">
         <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
           <div>
@@ -98,8 +98,8 @@ export function LeaderboardPage() {
         description="Track the highest reputation wallets in CircleSave and see who is building the strongest on-chain circle history."
         accentClassName="bg-[#FFE66D]"
         actions={
-          <Link to="/profile">
-            <Button className="neo-button-primary">Open Profile</Button>
+          <Link to="/dashboard">
+            <Button className="neo-button-primary">Open Dashboard</Button>
           </Link>
         }
       />
@@ -114,7 +114,7 @@ export function HowItWorksPage() {
       <InfoPageHeader
         eyebrow="Product Flow"
         title="How CircleSave Works"
-        description="Connect once, join or create circles, use StarkZap-powered actions from the same wallet, and keep every move visible in your profile and logs."
+        description="Connect once, join or create circles, use StarkZap-powered actions from the same wallet, and keep every move visible in your dashboard and logs."
         accentClassName="bg-[#4ECDC4] text-white"
         actions={
           <>
@@ -148,7 +148,7 @@ export function ContractsPage() {
         actions={
           <Link to="/sdk">
             <Button className="neo-button-primary">
-              Open SDK Guide
+              Open Help Center
               <ArrowRight className="ml-2 h-5 w-5" />
             </Button>
           </Link>
@@ -240,7 +240,7 @@ export function ApiPage() {
           <div className="space-y-3 text-[15px] leading-relaxed text-black/70">
             <p>Circle creation, contributions, collateral, and reputation are handled by Starknet smart contracts.</p>
             <p>Swap and DCA flows are powered through StarkZap v2 provider integrations and executed by the user&apos;s connected wallet.</p>
-            <p>Logs and profile activity are app-level views layered on top of the same wallet and transaction history.</p>
+            <p>Logs and dashboard activity are contract-backed views built from public factory, circle, collateral, and reputation events.</p>
           </div>
         </div>
 
@@ -250,7 +250,7 @@ export function ApiPage() {
             Useful Product Routes
           </div>
           <div className="grid gap-3 text-sm font-black uppercase tracking-[0.08em]">
-            <Link to="/sdk" className="border-[2px] border-black bg-[#FEFAE0] px-4 py-3 hover:bg-[#FFE66D]">SDK Guide</Link>
+            <Link to="/sdk" className="border-[2px] border-black bg-[#FEFAE0] px-4 py-3 hover:bg-[#FFE66D]">Help Center</Link>
             <Link to="/circles" className="border-[2px] border-black bg-[#FEFAE0] px-4 py-3 hover:bg-[#FFE66D]">Discover Circles</Link>
             <Link to="/swap" className="border-[2px] border-black bg-[#FEFAE0] px-4 py-3 hover:bg-[#FFE66D]">Swap</Link>
             <Link to="/dca" className="border-[2px] border-black bg-[#FEFAE0] px-4 py-3 hover:bg-[#FFE66D]">DCA</Link>
@@ -302,7 +302,7 @@ export function PrivacyPage() {
       <div className="page-shell grid gap-6 py-8 md:py-10">
         <PolicySection
           title="Wallet Data"
-          body="The app reads wallet addresses, token balances, connected account state, and on-chain transaction information needed to show profile details, logs, and product actions."
+          body="The app reads wallet addresses, token balances, connected account state, and on-chain transaction information needed to show dashboard details, logs, and product actions."
         />
         <PolicySection
           title="On-Chain Transparency"

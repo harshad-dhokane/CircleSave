@@ -20,7 +20,9 @@ import {
 } from '@/components/ui/select';
 import {
   type StarkZapDcaFrequency,
+  type StarkZapDcaProviderId,
   type StarkZapDcaPreview,
+  type StarkZapExecutionMode,
   type StarkZapOrderView,
   type StarkZapTokenKey,
   useStarkZapActions,
@@ -40,27 +42,41 @@ const DCA_TEMPLATES: Array<{
   sellAmount: string;
   sellAmountPerCycle: string;
   frequency: StarkZapDcaFrequency;
+  providerId: StarkZapDcaProviderId;
   color: string;
 }> = [
-  { title: 'Starter STRK Build', sellToken: 'STRK', buyToken: 'ETH', sellAmount: '5', sellAmountPerCycle: '1', frequency: 'P1D', color: '#FFE66D' },
-  { title: 'Weekly STRK Funding', sellToken: 'USDC', buyToken: 'STRK', sellAmount: '10', sellAmountPerCycle: '2', frequency: 'P1W', color: '#4ECDC4' },
-  { title: 'ETH To STRK Drip', sellToken: 'ETH', buyToken: 'STRK', sellAmount: '1', sellAmountPerCycle: '0.25', frequency: 'P1D', color: '#FF6B6B' },
+  { title: 'Starter STRK Build', sellToken: 'STRK', buyToken: 'ETH', sellAmount: '5', sellAmountPerCycle: '1', frequency: 'P1D', providerId: 'avnu', color: '#FFE66D' },
+  { title: 'Weekly STRK Funding', sellToken: 'USDC', buyToken: 'STRK', sellAmount: '10', sellAmountPerCycle: '2', frequency: 'P1W', providerId: 'ekubo', color: '#4ECDC4' },
+  { title: 'ETH To STRK Drip', sellToken: 'ETH', buyToken: 'STRK', sellAmount: '1', sellAmountPerCycle: '0.25', frequency: 'P1D', providerId: 'avnu', color: '#FF6B6B' },
 ] as const;
 
 export function DcaPage() {
   const { isConnected, address } = useWallet();
-  const { previewDca, createDca, loadDcaOrders } = useStarkZapActions();
+  const {
+    cancelDca,
+    createDca,
+    dcaProviderOptions,
+    isWalletReady,
+    loadDcaOrders,
+    previewDca,
+    recommendedExecutionMode,
+  } = useStarkZapActions();
   const [sellToken, setSellToken] = useState<StarkZapTokenKey>('STRK');
   const [buyToken, setBuyToken] = useState<StarkZapTokenKey>('ETH');
   const [sellAmount, setSellAmount] = useState('5');
   const [sellAmountPerCycle, setSellAmountPerCycle] = useState('1');
   const [frequency, setFrequency] = useState<StarkZapDcaFrequency>('P1D');
+  const [providerId, setProviderId] = useState<StarkZapDcaProviderId>('avnu');
+  const [orderFilter, setOrderFilter] = useState<'all' | StarkZapDcaProviderId>('all');
+  const [feeMode, setFeeMode] = useState<StarkZapExecutionMode>(recommendedExecutionMode);
   const [preview, setPreview] = useState<StarkZapDcaPreview | null>(null);
   const [orders, setOrders] = useState<StarkZapOrderView[]>([]);
   const [lastTx, setLastTx] = useState<{ hash: string; explorerUrl: string } | null>(null);
-  const [activeAction, setActiveAction] = useState<'preview' | 'create' | null>(null);
+  const [activeAction, setActiveAction] = useState<'preview' | 'create' | 'cancel' | null>(null);
+  const [pendingOrderId, setPendingOrderId] = useState<string | null>(null);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const accountInitializing = isConnected && !isWalletReady;
 
   const totalCycles = useMemo(() => {
     const total = Number.parseFloat(sellAmount);
@@ -69,27 +85,31 @@ export function DcaPage() {
     return Math.ceil(total / perCycle);
   }, [sellAmount, sellAmountPerCycle]);
 
-  const refreshOrders = async () => {
+  useEffect(() => {
+    setFeeMode(recommendedExecutionMode);
+  }, [recommendedExecutionMode]);
+
+  const refreshOrders = async (nextFilter: 'all' | StarkZapDcaProviderId = orderFilter) => {
     try {
       setLoadingOrders(true);
-      setOrders(await loadDcaOrders());
+      setOrders(await loadDcaOrders({ providerId: nextFilter }));
     } catch {
-      // The hook surfaces a toast and we preserve the current list.
+      // The hook already surfaces a toast and we preserve the current list.
     } finally {
       setLoadingOrders(false);
     }
   };
 
   useEffect(() => {
-    if (!isConnected) return;
-    void refreshOrders();
-  }, [isConnected]);
+    if (!isWalletReady) return;
+    void refreshOrders(orderFilter);
+  }, [isWalletReady, orderFilter]);
 
   const handlePreview = async () => {
     try {
       setActiveAction('preview');
       setErrorMessage(null);
-      setPreview(await previewDca({ sellToken, buyToken, sellAmountPerCycle }));
+      setPreview(await previewDca({ sellToken, buyToken, sellAmountPerCycle, providerId }));
     } catch (error) {
       setPreview(null);
       setErrorMessage(error instanceof Error ? error.message : 'DCA preview failed');
@@ -108,13 +128,36 @@ export function DcaPage() {
         sellAmount,
         sellAmountPerCycle,
         frequency,
+        providerId,
+        feeMode,
       });
       setLastTx(tx);
-      await refreshOrders();
+      await refreshOrders(orderFilter);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'DCA order failed');
     } finally {
       setActiveAction(null);
+    }
+  };
+
+  const handleCancel = async (order: StarkZapOrderView) => {
+    try {
+      setActiveAction('cancel');
+      setPendingOrderId(order.id);
+      setErrorMessage(null);
+      const tx = await cancelDca({
+        providerId: order.providerId,
+        orderId: order.id,
+        orderAddress: order.orderAddress,
+        feeMode,
+      });
+      setLastTx(tx);
+      await refreshOrders(orderFilter);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'DCA cancellation failed');
+    } finally {
+      setActiveAction(null);
+      setPendingOrderId(null);
     }
   };
 
@@ -124,6 +167,7 @@ export function DcaPage() {
     setSellAmount(template.sellAmount);
     setSellAmountPerCycle(template.sellAmountPerCycle);
     setFrequency(template.frequency);
+    setProviderId(template.providerId);
     setPreview(null);
     setErrorMessage(null);
   };
@@ -146,7 +190,7 @@ export function DcaPage() {
 
   return (
     <div className="min-h-screen bg-[#FEFAE0]">
-      <div className="border-b-[2px] border-black bg-white">
+      <div className="content-divider-bottom border-b-[2px] border-black bg-white">
         <div className="page-shell py-8 md:py-10">
           <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
             <div>
@@ -154,24 +198,26 @@ export function DcaPage() {
                 <Zap className="h-4 w-4" />
                 StarkZap v2 DCA
               </div>
-              <h1 className="text-4xl font-black md:text-5xl">Recurring Buy Workspace</h1>
+              <h1 className="text-4xl font-black md:text-5xl">Recurring Funding Workspace</h1>
               <p className="mt-3 max-w-3xl text-[15px] leading-relaxed text-black/70 md:text-base">
-                Build a recurring route that uses the same CircleSave wallet session, preview each cycle, and create an order that keeps your contribution balance moving automatically.
+                Build AVNU or Ekubo recurring buys, preview each cycle, manage live orders, and cancel stale automation without leaving CircleSave.
               </p>
               <div className="mt-4 flex flex-wrap gap-3">
                 <div className="neo-chip bg-white">
                   <Wallet className="h-4 w-4" />
-                  {address}
+                  <span className="text-wrap-safe min-w-0 font-mono normal-case tracking-normal">
+                    {address}
+                  </span>
                 </div>
                 <div className="neo-chip bg-[#FEFAE0]">
                   <Sparkles className="h-4 w-4" />
-                  STRK -&gt; ETH is the cleanest Sepolia first test
+                  Use this to auto-fund future circle contributions
                 </div>
               </div>
             </div>
 
             <div className="flex flex-wrap gap-3">
-              <Button variant="outline" onClick={() => void refreshOrders()} className="border-[2px] border-black">
+              <Button variant="outline" onClick={() => void refreshOrders(orderFilter)} disabled={!isWalletReady || loadingOrders} className="border-[2px] border-black">
                 {loadingOrders ? 'Refreshing Orders...' : 'Refresh Orders'}
               </Button>
               <Link to="/logs">
@@ -185,14 +231,19 @@ export function DcaPage() {
       </div>
 
       <div className="page-shell grid gap-6 py-8 xl:grid-cols-[minmax(0,1fr)_360px] xl:py-10">
+        {accountInitializing && (
+          <div className="xl:col-span-2 border-[2px] border-black bg-[#FFE66D] px-5 py-4 text-sm font-bold leading-relaxed shadow-[3px_3px_0px_0px_#1a1a1a]">
+            Wallet session is finishing setup. DCA previews and order loading will start automatically in a moment.
+          </div>
+        )}
         <section className="space-y-6">
           <div className="neo-panel p-6">
             <div className="mb-4 flex items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Recommended Templates</p>
-                <h2 className="text-2xl font-black">Start From A Working DCA Pattern</h2>
+                <h2 className="text-2xl font-black">Start From A Working Automation Pattern</h2>
               </div>
-              <div className="neo-chip bg-white">Same Wallet Session</div>
+              <div className="neo-chip bg-white">Provider Aware</div>
             </div>
             <div className="grid gap-4 md:grid-cols-3">
               {DCA_TEMPLATES.map((template) => (
@@ -211,7 +262,7 @@ export function DcaPage() {
                   <p className="font-black">{template.title}</p>
                   <p className="mt-2 text-sm text-black/65">{template.sellToken} {'->'} {template.buyToken}</p>
                   <p className="mt-2 text-sm leading-relaxed text-black/60">
-                    {template.sellAmountPerCycle} per cycle • {template.frequency}
+                    {template.sellAmountPerCycle} per cycle via {template.providerId.toUpperCase()}
                   </p>
                 </button>
               ))}
@@ -230,7 +281,7 @@ export function DcaPage() {
               </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               <div>
                 <p className="mb-2 text-sm font-bold">Sell Token</p>
                 <Select value={sellToken} onValueChange={(value) => setSellToken(value as StarkZapTokenKey)}>
@@ -264,6 +315,22 @@ export function DcaPage() {
               </div>
 
               <div>
+                <p className="mb-2 text-sm font-bold">Provider</p>
+                <Select value={providerId} onValueChange={(value) => setProviderId(value as StarkZapDcaProviderId)}>
+                  <SelectTrigger className="w-full border-[2px] border-black bg-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="border-[2px] border-black">
+                    {dcaProviderOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
                 <p className="mb-2 text-sm font-bold">Total Sell Amount</p>
                 <Input
                   value={sellAmount}
@@ -283,7 +350,7 @@ export function DcaPage() {
                 />
               </div>
 
-              <div className="md:col-span-2">
+              <div>
                 <p className="mb-2 text-sm font-bold">Frequency</p>
                 <Select value={frequency} onValueChange={(value) => setFrequency(value as StarkZapDcaFrequency)}>
                   <SelectTrigger className="w-full border-[2px] border-black bg-white">
@@ -301,13 +368,30 @@ export function DcaPage() {
                   {DCA_FREQUENCIES.find((item) => item.value === frequency)?.helper}
                 </p>
               </div>
+
+              <div>
+                <p className="mb-2 text-sm font-bold">Order List Filter</p>
+                <Select value={orderFilter} onValueChange={(value) => setOrderFilter(value as 'all' | StarkZapDcaProviderId)}>
+                  <SelectTrigger className="w-full border-[2px] border-black bg-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="border-[2px] border-black">
+                    <SelectItem value="all">All Providers</SelectItem>
+                    {dcaProviderOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             <div className="mt-6 flex flex-wrap gap-3">
-              <Button type="button" onClick={handlePreview} disabled={activeAction !== null} className="neo-button-secondary">
+              <Button type="button" onClick={handlePreview} disabled={activeAction !== null || !isWalletReady} className="neo-button-secondary">
                 {activeAction === 'preview' ? 'Loading Preview...' : 'Preview Cycle'}
               </Button>
-              <Button type="button" onClick={handleCreate} disabled={activeAction !== null} className="neo-button-primary">
+              <Button type="button" onClick={handleCreate} disabled={activeAction !== null || !isWalletReady} className="neo-button-primary">
                 {activeAction === 'create' ? 'Creating Order...' : 'Create DCA Order'}
               </Button>
             </div>
@@ -331,10 +415,10 @@ export function DcaPage() {
             {orders.length > 0 ? (
               <div className="space-y-3">
                 {orders.map((order) => (
-                  <div key={order.id} className="grid gap-3 border-[2px] border-black bg-white p-4 md:grid-cols-[1.1fr_0.8fr_0.8fr_auto] md:items-center">
+                  <div key={order.id} className="grid gap-3 border-[2px] border-black bg-white p-4 md:grid-cols-[1.1fr_0.9fr_0.9fr_auto] md:items-center">
                     <div>
                       <p className="font-black">{order.sellToken} {'->'} {order.buyToken}</p>
-                      <p className="mt-1 text-sm text-black/60">{order.frequency} • {order.provider}</p>
+                      <p className="mt-1 text-sm text-black/60">{order.frequency} • {order.provider} • {order.createdAt}</p>
                     </div>
                     <div>
                       <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Plan</p>
@@ -344,8 +428,19 @@ export function DcaPage() {
                       <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Progress</p>
                       <p className="mt-1 font-black">{order.soldAmount} sold • {order.boughtAmount} bought</p>
                     </div>
-                    <div className="justify-self-start border-[2px] border-black bg-[#FEFAE0] px-3 py-1 text-xs font-black uppercase tracking-[0.08em] md:justify-self-end">
-                      {order.status}
+                    <div className="flex flex-wrap items-center gap-3 md:justify-self-end">
+                      <div className="border-[2px] border-black bg-[#FEFAE0] px-3 py-1 text-xs font-black uppercase tracking-[0.08em]">
+                        {order.status}
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="border-[2px] border-black"
+                        disabled={activeAction !== null || order.status !== 'ACTIVE' || !isWalletReady}
+                        onClick={() => void handleCancel(order)}
+                      >
+                        {pendingOrderId === order.id ? 'Cancelling...' : 'Cancel'}
+                      </Button>
                     </div>
                   </div>
                 ))}
@@ -355,7 +450,7 @@ export function DcaPage() {
                 <Repeat className="mx-auto mb-3 h-10 w-10 text-black/25" />
                 <h3 className="text-xl font-black">No DCA orders yet</h3>
                 <p className="mt-2 text-sm leading-relaxed text-black/65">
-                  Create your first recurring order and it will show here with its current status.
+                  Create your first recurring order and it will show here with provider, progress, and cancellation controls.
                 </p>
               </div>
             )}
@@ -389,8 +484,11 @@ export function DcaPage() {
                 </div>
               </div>
               <div className="border-[2px] border-black bg-white p-4">
-                <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Frequency</p>
-                <p className="mt-2 text-xl font-black">{DCA_FREQUENCIES.find((item) => item.value === frequency)?.label}</p>
+                <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Provider + Mode</p>
+                <p className="mt-2 text-xl font-black">
+                  {dcaProviderOptions.find((option) => option.value === providerId)?.label}
+                </p>
+                <p className="mt-1 text-sm text-black/60">Regular Signing</p>
               </div>
             </div>
           </div>
@@ -412,7 +510,7 @@ export function DcaPage() {
               </div>
             ) : (
               <p className="text-[15px] leading-relaxed text-black/70">
-                Preview the cycle first to estimate the recurring buy output before creating the on-chain order.
+                Preview the cycle first to estimate recurring buy output before creating the on-chain order.
               </p>
             )}
           </div>
@@ -424,7 +522,7 @@ export function DcaPage() {
             </div>
             {lastTx ? (
               <div className="space-y-3">
-                <p className="break-all text-sm text-black/60">{lastTx.hash}</p>
+                <p className="text-wrap-safe font-mono text-sm text-black/60">{lastTx.hash}</p>
                 <a
                   href={lastTx.explorerUrl}
                   target="_blank"

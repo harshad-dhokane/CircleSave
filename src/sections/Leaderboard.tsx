@@ -27,7 +27,6 @@ export function Leaderboard() {
     );
   }
 
-  // If no leaders yet (leaderboard requires indexer), show a CTA
   if (leaders.length === 0) {
     return (
       <section className="py-24 bg-white relative overflow-hidden">
@@ -36,19 +35,18 @@ export function Leaderboard() {
           <div className="text-center mb-16">
             <div className="animate-fade-in inline-flex items-center gap-2 px-5 py-2.5 bg-[#FFD700] border-[3px] border-black mb-4">
               <Trophy className="w-5 h-5" />
-              <span className="font-black text-base uppercase tracking-wider">Coming Soon</span>
+              <span className="font-black text-base uppercase tracking-wider">Live On-Chain Ranking</span>
             </div>
             <h2 className="animate-fade-in stagger-1 text-4xl md:text-5xl font-black mb-4">
               Community{' '}
               <span className="text-[#FFD700]">Leaderboard</span>
             </h2>
             <p className="animate-fade-in stagger-2 text-xl text-gray-600 max-w-3xl mx-auto leading-relaxed">
-              Be among the first to join circles, build your reputation, and climb the ranks. 
-              All on-chain. All verifiable on Voyager.
+              No ranked wallets are available yet because this Sepolia deployment has not accumulated enough circle activity.
+              Join, contribute, and create circles to populate the leaderboard from live contract reads.
             </p>
           </div>
-          
-          {/* Placeholder leaderboard slots */}
+
           <div className="grid md:grid-cols-3 gap-6 mb-12">
             {[1, 2, 3].map((rank, index) => {
               const RankIcon = rankIcons[rank - 1];

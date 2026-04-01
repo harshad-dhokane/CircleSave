@@ -61,7 +61,7 @@ export function CirclesPage() {
   return (
     <div className="min-h-screen bg-[#FEFAE0]">
       {/* Page Header */}
-      <div className="bg-white border-b-[2px] border-black">
+      <div className="content-divider-bottom bg-white border-b-[2px] border-black">
         <div className="page-shell py-8 md:py-9">
           <div className="animate-fade-in flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
@@ -81,7 +81,7 @@ export function CirclesPage() {
       </div>
 
       {/* Filters */}
-      <div className="bg-white border-b-[2px] border-black">
+      <div className="content-divider-bottom bg-white border-b-[2px] border-black">
         <div className="page-shell py-4 md:py-5">
           <div className="animate-fade-in stagger-1 flex flex-col lg:flex-row gap-4">
             {/* Search */}

@@ -1,172 +1,522 @@
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowRight,
   ArrowRightLeft,
   Blocks,
   BookOpen,
+  Bug,
+  Code2,
   FileText,
   PiggyBank,
   Repeat,
+  Sparkles,
+  Users,
   Wallet,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
-const featureCards = [
+type GuideTopic = {
+  id: string;
+  label: string;
+  summary: string;
+  color: string;
+  icon: typeof Sparkles;
+};
+
+type FeatureRoute = {
+  label: string;
+  to: string;
+};
+
+type FeatureMapEntry = {
+  title: string;
+  summary: string;
+  color: string;
+  icon: typeof Sparkles;
+  routes: FeatureRoute[];
+  files: string[];
+};
+
+type SnippetEntry = {
+  title: string;
+  file: string;
+  summary: string;
+  code: string;
+};
+
+const guideTopics: GuideTopic[] = [
   {
-    icon: Wallet,
-    title: 'Single Wallet Session',
-    description:
-      'Users connect once from the main app header. The same connected account is reused for StarkZap-powered swap, DCA, and lending actions.',
+    id: 'overview',
+    label: 'Overview',
+    summary: 'What the app does now and what changed in this build.',
     color: '#FF6B6B',
+    icon: Sparkles,
   },
   {
-    icon: ArrowRightLeft,
-    title: 'Swap Page',
-    description:
-      'Swap uses StarkZap v2 AVNU swap provider logic to quote and prepare calls, then executes them through the connected app wallet.',
+    id: 'wallet-network',
+    label: 'Wallet + Network',
+    summary: 'How login, Sepolia, gasless, and execution modes work.',
     color: '#4ECDC4',
+    icon: Wallet,
   },
   {
-    icon: Repeat,
-    title: 'DCA Page',
-    description:
-      'DCA uses StarkZap v2 AVNU DCA provider logic to preview cycle economics, create orders, and fetch existing orders for the active user.',
+    id: 'circle-flows',
+    label: 'Circle Flows',
+    summary: 'Discover, create, join, contribute, and track circles.',
     color: '#FFE66D',
+    icon: Users,
   },
   {
-    icon: PiggyBank,
-    title: 'Lending Page',
-    description:
-      'Lending uses StarkZap v2 Vesu provider logic to read markets and positions, then deposit or withdraw through the connected wallet.',
+    id: 'automation',
+    label: 'Automation',
+    summary: 'Launch circles with DCA and fund circles from inside the detail page.',
     color: '#96CEB4',
+    icon: Sparkles,
   },
   {
-    icon: FileText,
-    title: 'Unified Logs',
-    description:
-      'Every StarkZap action writes to one shared logs page with status, account, transaction hash, and Voyager explorer links.',
+    id: 'swap',
+    label: 'Swap',
+    summary: 'Best-route and forced-provider StarkZap swap flow.',
+    color: '#4ECDC4',
+    icon: ArrowRightLeft,
+  },
+  {
+    id: 'dca',
+    label: 'DCA',
+    summary: 'Recurring order model, previews, refresh, and cancellation.',
+    color: '#FFE66D',
+    icon: Repeat,
+  },
+  {
+    id: 'lending',
+    label: 'Lending',
+    summary: 'Vesu deposit, withdraw, borrow, repay, and health preview.',
+    color: '#96CEB4',
+    icon: PiggyBank,
+  },
+  {
+    id: 'visibility',
+    label: 'Logs + Dashboard',
+    summary: 'Public logs and wallet-specific dashboard activity from contracts.',
     color: '#DDA0DD',
+    icon: FileText,
   },
   {
-    icon: Blocks,
-    title: 'SDK Pieces Used',
-    description:
-      'This build uses StarkZap token presets, Amount helpers, Tx tracking, AVNU swap, AVNU DCA, and Vesu lending provider classes.',
+    id: 'sdk-map',
+    label: 'SDK v2 Map',
+    summary: 'Where each StarkZap v2 feature is wired into the product.',
     color: '#F4A261',
+    icon: Blocks,
+  },
+  {
+    id: 'code-snippets',
+    label: 'Code Snippets',
+    summary: 'Implementation examples from the current codebase.',
+    color: '#45B7D1',
+    icon: Code2,
+  },
+  {
+    id: 'troubleshooting',
+    label: 'Troubleshooting',
+    summary: 'Known Sepolia and wallet caveats in the current build.',
+    color: '#FF6B6B',
+    icon: Bug,
   },
 ] as const;
 
-const actionLinks = [
+const featureMap: FeatureMapEntry[] = [
   {
-    href: '/swap',
-    title: 'Swap',
-    eyebrow: 'AVNU Routing',
-    description: 'Trade into or out of STRK with the connected app wallet.',
+    title: 'Cartridge Wallet Session + Sponsored Execution Detection',
+    summary:
+      'CircleSave connects through the Cartridge controller connector, then StarkZap actions reuse that same account and only enable sponsored execution when the wallet exposes paymaster execution.',
+    color: '#FF6B6B',
+    icon: Wallet,
+    routes: [
+      { label: 'Dashboard', to: '/dashboard' },
+      { label: 'Swap', to: '/swap' },
+      { label: 'DCA', to: '/dca' },
+      { label: 'Lending', to: '/lending' },
+    ],
+    files: [
+      'src/lib/starknet.ts',
+      'src/lib/starkzapConnectedWallet.ts',
+      'src/hooks/useWallet.ts',
+      'src/hooks/useStarkZapActions.ts',
+    ],
+  },
+  {
+    title: 'Multi-Provider Swap Comparison',
+    summary:
+      'The swap workspace compares AVNU and Ekubo, surfaces a best route option, and can still force a specific provider when the user wants to test a venue directly.',
     color: '#4ECDC4',
     icon: ArrowRightLeft,
+    routes: [
+      { label: 'Swap', to: '/swap' },
+      { label: 'Circle Detail', to: '/circles' },
+    ],
+    files: [
+      'src/pages/SwapPage.tsx',
+      'src/hooks/useStarkZapActions.ts',
+    ],
   },
   {
-    href: '/dca',
-    title: 'DCA',
-    eyebrow: 'Recurring Orders',
-    description: 'Create recurring AVNU-powered DCA orders with one wallet session.',
+    title: 'Provider-Aware DCA Orders',
+    summary:
+      'The DCA workspace previews a cycle, creates AVNU or Ekubo recurring orders, reloads active orders, and supports order cancellation from the same page.',
     color: '#FFE66D',
     icon: Repeat,
+    routes: [
+      { label: 'DCA', to: '/dca' },
+      { label: 'Create Circle', to: '/circles/create' },
+    ],
+    files: [
+      'src/pages/DcaPage.tsx',
+      'src/pages/CreateCirclePage.tsx',
+      'src/hooks/useStarkZapActions.ts',
+    ],
   },
   {
-    href: '/lending',
-    title: 'Lending',
-    eyebrow: 'Vesu Markets',
-    description: 'Deposit to or withdraw from Vesu without leaving the app account.',
+    title: 'Vesu Lending Actions',
+    summary:
+      'The lending workspace supports deposit, withdraw, withdraw max, borrow, repay, max-borrow quotes, and health simulations through StarkZap v2 Vesu integration.',
     color: '#96CEB4',
     icon: PiggyBank,
+    routes: [
+      { label: 'Lending', to: '/lending' },
+      { label: 'Circle Detail', to: '/circles' },
+    ],
+    files: [
+      'src/pages/LendingPage.tsx',
+      'src/components/circles/CircleFundingStudio.tsx',
+      'src/hooks/useStarkZapActions.ts',
+    ],
   },
   {
-    href: '/logs',
-    title: 'Logs',
-    eyebrow: 'Voyager Links',
-    description: 'Review every StarkZap transaction and jump to Voyager.',
+    title: 'Atomic Circle Funding',
+    summary:
+      'Circle detail pages can chain StarkZap funding with circle actions, so the app can swap or pull liquidity first and then join or contribute in the same sequence.',
     color: '#DDA0DD',
+    icon: Sparkles,
+    routes: [
+      { label: 'Circle Detail', to: '/circles' },
+    ],
+    files: [
+      'src/components/circles/CircleFundingStudio.tsx',
+      'src/hooks/useStarkZapActions.ts',
+      'src/lib/circleCalls.ts',
+    ],
+  },
+  {
+    title: 'Launch Circle + DCA Bundle',
+    summary:
+      'Circle creation can optionally add a recurring STRK DCA plan during the same launch flow, so a new circle is created with its funding strategy attached.',
+    color: '#F4A261',
+    icon: Blocks,
+    routes: [
+      { label: 'Create Circle', to: '/circles/create' },
+    ],
+    files: [
+      'src/pages/CreateCirclePage.tsx',
+      'src/hooks/useStarkZapActions.ts',
+      'src/lib/circleCalls.ts',
+    ],
+  },
+  {
+    title: 'Public Logs + Wallet Activity',
+    summary:
+      'The logs page reads public contract events for everyone, while the dashboard activity tab filters contract events to the connected wallet and circles it belongs to.',
+    color: '#45B7D1',
     icon: FileText,
+    routes: [
+      { label: 'Logs', to: '/logs' },
+      { label: 'Dashboard', to: '/dashboard' },
+    ],
+    files: [
+      'src/hooks/useOnchainActivityFeed.ts',
+      'src/pages/LogsPage.tsx',
+      'src/pages/ProfilePage.tsx',
+    ],
   },
 ] as const;
 
-function FeatureCard(props: (typeof featureCards)[number]) {
-  const Icon = props.icon;
+const codeSnippets: SnippetEntry[] = [
+  {
+    title: 'Cartridge Connector + Paymaster Setup',
+    file: 'src/lib/starknet.ts',
+    summary:
+      'The app exposes a single Cartridge controller connector and configures the AVNU paymaster for sponsored execution when the wallet supports it.',
+    code: String.raw`const cartridgeConnector = new ControllerConnector({
+  defaultChainId: constants.StarknetChainId.SN_SEPOLIA,
+  rpcUrl: CARTRIDGE_RPC_URL,
+  chains: [{ rpcUrl: CARTRIDGE_RPC_URL }],
+  policies: [],
+  lazyload: true,
+});
 
+export const connectors = [cartridgeConnector];
+export const paymasterProvider = avnuPaymasterProvider({
+  apiKey: AVNU_PAYMASTER_API_KEY,
+});`,
+  },
+  {
+    title: 'Register StarkZap Providers On The Connected Wallet',
+    file: 'src/lib/starkzapConnectedWallet.ts',
+    summary:
+      'The custom StarkZap wallet adapter keeps AVNU as the default provider set, then registers Ekubo for swap and DCA so the UI can compare venues.',
+    code: String.raw`super({
+  address: fromAddress(options.address),
+  defaultSwapProvider: new AvnuSwapProvider(),
+  defaultLendingProvider: new VesuLendingProvider(),
+  defaultDcaProvider: new AvnuDcaProvider(),
+});
+
+this.registerSwapProvider(new EkuboSwapProvider());
+this.dca().registerProvider(new EkuboDcaProvider());`,
+  },
+  {
+    title: 'Atomic Swap + Circle Action',
+    file: 'src/hooks/useStarkZapActions.ts',
+    summary:
+      'Inside the circle funding studio, the app can swap into STRK, approve the circle contract, and immediately join or contribute through one StarkZap builder chain.',
+    code: String.raw`const builder = wallet.tx()
+  .swap({
+    provider: providerId,
+    tokenIn: sourceToken,
+    tokenOut: strkToken,
+    amountIn: Amount.parse(params.sourceAmount, sourceToken),
+    slippageBps: 100n,
+  })
+  .approve(
+    strkToken,
+    fromAddress(params.circleAddress),
+    Amount.fromRaw(params.requiredStrkAmount, strkToken),
+  )
+  .add(
+    params.action === 'join'
+      ? buildJoinCircleCall(params.circleAddress)
+      : buildContributeCall(params.circleAddress),
+  );`,
+  },
+  {
+    title: 'Create Circle + DCA Launch Bundle',
+    file: 'src/hooks/useStarkZapActions.ts',
+    summary:
+      'The create-circle flow can attach a recurring STRK DCA order in the same launch transaction builder.',
+    code: String.raw`const builder = wallet.tx().add(buildCreateCircleCall(params.circle));
+
+builder.dcaCreate({
+  provider: providerId,
+  sellToken,
+  buyToken: sepoliaTokens.STRK,
+  sellAmount: Amount.parse(params.automation.sellAmount, sellToken),
+  sellAmountPerCycle: Amount.parse(params.automation.sellAmountPerCycle, sellToken),
+  frequency: params.automation.frequency,
+});`,
+  },
+  {
+    title: 'Dashboard Activity Filter',
+    file: 'src/pages/ProfilePage.tsx',
+    summary:
+      'Dashboard activity is contract-backed and shows both direct wallet events and events from circles the wallet belongs to.',
+    code: String.raw`const myActivityEntries = activityEntries.filter((entry) => {
+  if (entry.actor?.toLowerCase() === normalizedAddress) {
+    return true;
+  }
+
+  return entry.circleAddress
+    ? userCircleAddressSet.has(entry.circleAddress.toLowerCase())
+    : false;
+});`,
+  },
+] as const;
+
+const troubleshootingTips = [
+  {
+    title: 'Swap or DCA says there is no route',
+    body:
+      'Sepolia liquidity is thin. If a pair has no AVNU or Ekubo route, try STRK -> ETH first, then test the rest of the flow from there.',
+  },
+  {
+    title: 'Gasless mode is unavailable',
+    body:
+      'The app only enables sponsored execution when the connected account exposes paymaster execution. If the toggle is disabled, switch to User Pays.',
+  },
+  {
+    title: 'Logs page is empty',
+    body:
+      'The public logs page depends on live CircleSave contract addresses. If the environment variables point to 0x0 or the contracts have not emitted events yet, the feed will be empty.',
+  },
+  {
+    title: 'Dashboard activity looks smaller than the public logs',
+    body:
+      'That is expected. The dashboard only shows events tied to the connected wallet or circles that wallet belongs to. The logs page is the full public contract feed.',
+  },
+  {
+    title: 'RPC or balance reads fail',
+    body:
+      'Sepolia infrastructure can be noisy. Public RPC and Cartridge balance calls may briefly fail, so refresh once and try again after a short pause.',
+  },
+  {
+    title: 'DCA did not auto-pay the circle',
+    body:
+      'The current implementation uses DCA to accumulate STRK for circle funding. It does not automatically submit the future monthly contribution transaction itself.',
+  },
+] as const;
+
+function RoutePill(props: FeatureRoute) {
   return (
-    <div className="neo-card h-full p-6">
-      <div
-        className="mb-4 flex h-11 w-11 items-center justify-center border-[2px] border-black"
-        style={{ backgroundColor: props.color }}
-      >
-        <Icon className="h-5 w-5 text-black" />
-      </div>
-      <h3 className="mb-3 text-xl font-black">{props.title}</h3>
-      <p className="text-[15px] leading-relaxed text-black/70">{props.description}</p>
-    </div>
-  );
-}
-
-function ActionTile(props: (typeof actionLinks)[number]) {
-  const Icon = props.icon;
-
-  return (
-    <Link to={props.href} className="group block h-full">
-      <div className="h-full border-[2px] border-black bg-white p-6 shadow-[4px_4px_0px_0px_#1a1a1a] transition-all group-hover:-translate-x-1 group-hover:-translate-y-1 group-hover:shadow-[6px_6px_0px_0px_#1a1a1a]">
-        <div className="mb-5 flex items-start justify-between gap-4">
-          <div
-            className="inline-flex items-center gap-2 border-[2px] border-black px-3 py-1.5 text-xs font-black uppercase tracking-[0.08em]"
-            style={{ backgroundColor: props.color }}
-          >
-            {props.eyebrow}
-          </div>
-          <div
-            className="flex h-12 w-12 items-center justify-center border-[2px] border-black"
-            style={{ backgroundColor: props.color }}
-          >
-            <Icon className="h-5 w-5 text-black" />
-          </div>
-        </div>
-        <h3 className="mb-2 text-2xl font-black">{props.title}</h3>
-        <p className="min-h-[4.5rem] text-[15px] leading-relaxed text-black/70">{props.description}</p>
-        <div className="mt-6 inline-flex items-center gap-2 text-sm font-black uppercase tracking-[0.08em]">
-          Open Page
-          <ArrowRight className="h-4 w-4" />
-        </div>
-      </div>
+    <Link
+      to={props.to}
+      className="inline-flex items-center gap-2 border-[2px] border-black bg-white px-3 py-1.5 text-xs font-black uppercase tracking-[0.08em] shadow-[2px_2px_0px_0px_#1a1a1a] transition-all hover:-translate-x-0.5 hover:-translate-y-0.5"
+    >
+      {props.label}
     </Link>
   );
 }
 
+function FilePill(props: { path: string }) {
+  return (
+    <div className="inline-flex border-[2px] border-black bg-[#FEFAE0] px-3 py-1.5 font-mono text-[12px] shadow-[2px_2px_0px_0px_#1a1a1a]">
+      {props.path}
+    </div>
+  );
+}
+
+function TopicTabTrigger(props: { topic: GuideTopic }) {
+  const Icon = props.topic.icon;
+
+  return (
+    <TabsTrigger
+      value={props.topic.id}
+      className="flex-none min-w-[170px] shrink-0 justify-start rounded-none border-[2px] border-transparent bg-transparent px-3 py-2.5 text-left font-black uppercase tracking-[0.04em] transition-all hover:border-black hover:bg-[#FEFAE0] hover:shadow-[2px_2px_0px_0px_#1a1a1a] data-[state=active]:border-black data-[state=active]:bg-black data-[state=active]:text-white data-[state=active]:shadow-[2px_2px_0px_0px_#1a1a1a] sm:min-w-[188px] xl:min-w-0 xl:w-full xl:flex-1"
+    >
+      <div className="flex items-start gap-3">
+        <div
+          className="flex h-9 w-9 shrink-0 items-center justify-center border-[2px] border-black"
+          style={{ backgroundColor: props.topic.color }}
+        >
+          <Icon className="h-4 w-4 text-black" />
+        </div>
+        <div className="min-w-0">
+          <p className="truncate text-sm">{props.topic.label}</p>
+        </div>
+      </div>
+    </TabsTrigger>
+  );
+}
+
+function HelpSection(props: {
+  id: string;
+  eyebrow: string;
+  title: string;
+  description: string;
+  color: string;
+  icon: typeof Sparkles;
+  children: ReactNode;
+}) {
+  const Icon = props.icon;
+
+  return (
+    <section id={props.id} className="scroll-mt-28 neo-panel p-6 md:p-8">
+      <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <div>
+          <div
+            className="mb-3 inline-flex items-center gap-2 border-[2px] border-black px-3 py-1.5 text-xs font-black uppercase tracking-[0.08em]"
+            style={{ backgroundColor: props.color }}
+          >
+            <Icon className="h-4 w-4 text-black" />
+            {props.eyebrow}
+          </div>
+          <h2 className="text-3xl font-black md:text-4xl">{props.title}</h2>
+          <p className="mt-3 max-w-4xl text-[15px] leading-relaxed text-black/70">{props.description}</p>
+        </div>
+      </div>
+      {props.children}
+    </section>
+  );
+}
+
+function BulletList(props: { items: string[] }) {
+  return (
+    <ul className="space-y-3">
+      {props.items.map((item) => (
+        <li key={item} className="flex gap-3 text-[15px] leading-relaxed text-black/75">
+          <span className="mt-1 h-2.5 w-2.5 shrink-0 border border-black bg-[#FF6B6B]" />
+          <span>{item}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function SnippetCard(props: SnippetEntry) {
+  return (
+    <div className="neo-card overflow-hidden p-0">
+      <div className="border-b-[2px] border-black bg-white p-5">
+        <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">{props.file}</p>
+        <h3 className="mt-2 text-2xl font-black">{props.title}</h3>
+        <p className="mt-3 text-[15px] leading-relaxed text-black/70">{props.summary}</p>
+      </div>
+      <pre className="overflow-x-auto bg-black p-5 text-[13px] leading-relaxed text-white">
+        <code>{props.code}</code>
+      </pre>
+    </div>
+  );
+}
+
 export function SdkPage() {
+  const [activeTopic, setActiveTopic] = useState<GuideTopic['id']>('overview');
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const shouldScrollToContentRef = useRef(false);
+
+  useEffect(() => {
+    if (!shouldScrollToContentRef.current) return;
+    shouldScrollToContentRef.current = false;
+
+    if (window.innerWidth >= 1280) return;
+
+    window.requestAnimationFrame(() => {
+      contentRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    });
+  }, [activeTopic]);
+
   return (
     <div className="min-h-screen bg-[#FEFAE0]">
-      <div className="border-b-[2px] border-black bg-white">
-        <div className="page-shell py-8 md:py-9">
-          <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
+      <div className="content-divider-bottom border-b-[2px] border-black bg-white">
+        <div className="page-shell py-8 md:py-10">
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
             <div>
               <div className="mb-3 inline-flex items-center gap-2 border-[2px] border-black bg-[#FFE66D] px-3 py-1.5 text-sm font-black uppercase tracking-[0.08em]">
                 <BookOpen className="h-4 w-4" />
-                StarkZap SDK v2 Help
+                CircleSave Help Center
               </div>
-              <h1 className="mb-2 text-4xl font-black md:text-5xl">SDK Guide</h1>
-              <p className="max-w-3xl text-[15px] leading-relaxed text-black/70 md:text-base">
-                This page is the help center for the StarkZap v2 integration in CircleSave. It explains what
-                SDK features are used and sends users straight into the dedicated product pages where those actions happen.
+              <h1 className="text-4xl font-black md:text-5xl">Product Guide + StarkZap v2 Map</h1>
+              <p className="mt-3 max-w-4xl text-[15px] leading-relaxed text-black/70 md:text-base">
+                This page replaces the lightweight SDK summary and now acts as the working guide for CircleSave.
+                It explains how the app behaves today, which routes own each flow, what StarkZap v2 features are implemented,
+                and where those integrations live in code.
               </p>
             </div>
 
             <div className="flex flex-wrap gap-3">
-              <Link to="/swap">
+              <Link to="/circles">
                 <Button className="neo-button-primary">
-                  <ArrowRightLeft className="h-5 w-5" />
+                  Open Circles
+                  <ArrowRight className="ml-2 h-5 w-5" />
+                </Button>
+              </Link>
+              <Link to="/swap">
+                <Button variant="outline" className="border-[2px] border-black">
                   Open Swap
                 </Button>
               </Link>
               <Link to="/logs">
                 <Button variant="outline" className="border-[2px] border-black">
-                  <FileText className="h-5 w-5" />
                   View Logs
                 </Button>
               </Link>
@@ -175,62 +525,522 @@ export function SdkPage() {
         </div>
       </div>
 
-      <div className="page-shell space-y-8 py-8 md:py-10">
-        <section>
-          <div className="mb-4 flex items-center justify-between gap-4">
-            <div>
-              <p className="text-sm font-black uppercase tracking-[0.08em] text-black/60">Open A StarkZap Workspace</p>
-              <h2 className="text-3xl font-black">Top Actions</h2>
-            </div>
-            <p className="max-w-xl text-right text-sm leading-relaxed text-black/60">
-              These are the live action pages. They all use the same connected CircleSave wallet session.
-            </p>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            {actionLinks.map((action) => (
-              <ActionTile key={action.href} {...action} />
-            ))}
-          </div>
-        </section>
+      <div className="page-shell py-8 md:py-10">
+        <Tabs
+          value={activeTopic}
+          onValueChange={(value) => {
+            shouldScrollToContentRef.current = true;
+            setActiveTopic(value as GuideTopic['id']);
+          }}
+          className="w-full animate-fade-in gap-4 xl:grid xl:grid-cols-[252px_minmax(0,1fr)] xl:items-start xl:gap-5 2xl:gap-6"
+        >
+          <aside className="space-y-3 xl:self-start">
+            <TabsList className="h-auto w-full flex-nowrap justify-start gap-1 overflow-x-auto rounded-none border-[3px] border-black bg-white p-1.5 shadow-[0_4px_0px_0px_#1a1a1a] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden xl:flex-col xl:flex-nowrap xl:items-stretch xl:overflow-visible">
+              {guideTopics.map((topic) => (
+                <TopicTabTrigger key={topic.id} topic={topic} />
+              ))}
+            </TabsList>
+          </aside>
 
-        <section className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-          {featureCards.map((card) => (
-            <FeatureCard key={card.title} {...card} />
-          ))}
-        </section>
+          <div ref={contentRef} className="mt-1 min-w-0 scroll-mt-24 xl:mt-0">
+            <TabsContent value="overview" className="mt-0">
+              <HelpSection
+                id="overview"
+                eyebrow="Current Build"
+                title="What CircleSave Does Today"
+                description="CircleSave is a Starknet Sepolia savings-circle app with real circle creation, join, and contribution flows, plus StarkZap-powered swap, DCA, lending, public logs, and contract-backed dashboard activity."
+                color="#FF6B6B"
+                icon={Sparkles}
+              >
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                  {[
+                    {
+                      title: 'Create + Join Circles',
+                      body: 'Factory-backed circle flows are live and tracked on-chain.',
+                      color: '#FF6B6B',
+                    },
+                    {
+                      title: 'Launch With DCA',
+                      body: 'New circles can be created with an attached recurring STRK funding plan.',
+                      color: '#FFE66D',
+                    },
+                    {
+                      title: 'Fund From Swap Or Lending',
+                      body: 'Circle detail pages can route through StarkZap before the final join or contribute action.',
+                      color: '#4ECDC4',
+                    },
+                    {
+                      title: 'Verify Through Contracts',
+                      body: 'Logs and dashboard activity are contract-backed, not browser-storage driven.',
+                      color: '#96CEB4',
+                    },
+                  ].map((item) => (
+                    <div key={item.title} className="border-[2px] border-black bg-white p-5">
+                      <div className="mb-3 h-3 w-16 border-[2px] border-black" style={{ backgroundColor: item.color }} />
+                      <p className="text-lg font-black">{item.title}</p>
+                      <p className="mt-2 text-sm leading-relaxed text-black/65">{item.body}</p>
+                    </div>
+                  ))}
+                </div>
 
-        <section className="neo-card p-6 md:p-8">
-          <h2 className="mb-4 text-2xl font-black">How It Works Now</h2>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="border-[2px] border-black bg-[#FEFAE0] p-5">
-              <h3 className="mb-2 text-lg font-black">1. Connect Once</h3>
-              <p className="text-[15px] leading-relaxed text-black/70">
-                Users connect from the app header with Cartridge, Argent, or Braavos. That same account stays active
-                across circles, profile, swap, DCA, lending, and logs.
-              </p>
-            </div>
-            <div className="border-[2px] border-black bg-[#FEFAE0] p-5">
-              <h3 className="mb-2 text-lg font-black">2. Use Dedicated Action Pages</h3>
-              <p className="text-[15px] leading-relaxed text-black/70">
-                Swap, DCA, and lending are separated into their own pages so each flow is focused, easier to understand,
-                and easier to debug than a mixed SDK demo page.
-              </p>
-            </div>
-            <div className="border-[2px] border-black bg-[#FEFAE0] p-5">
-              <h3 className="mb-2 text-lg font-black">3. Execute Through The App Wallet</h3>
-              <p className="text-[15px] leading-relaxed text-black/70">
-                StarkZap provider logic prepares quotes or contract calls, then the already connected app wallet signs
-                and submits those transactions.
-              </p>
-            </div>
-            <div className="border-[2px] border-black bg-[#FEFAE0] p-5">
-              <h3 className="mb-2 text-lg font-black">4. Review Shared Logs</h3>
-              <p className="text-[15px] leading-relaxed text-black/70">
-                Every submitted StarkZap action is written to one logs page with transaction status and a Voyager link.
-              </p>
-            </div>
+                <div className="mt-6 grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
+                  <div className="border-[2px] border-black bg-white p-5">
+                    <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">What Changed</p>
+                    <div className="mt-4">
+                      <BulletList
+                        items={[
+                          'The old SDK summary page has been replaced by this route-level guide so the product now has one place that explains the real implementation.',
+                          'Circle creation can launch with a recurring STRK DCA order, and circle detail pages include embedded StarkZap funding flows.',
+                          'The public logs page now reads CircleSave contract events directly from Starknet without requiring a wallet connection.',
+                          'Dashboard activity now reads contract events for the connected wallet and circles that wallet belongs to.',
+                        ]}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="border-[2px] border-black bg-[#FEFAE0] p-5">
+                    <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Use This Guide For</p>
+                    <div className="mt-4">
+                      <BulletList
+                        items={[
+                          'Understanding what each route is supposed to do before you click into it.',
+                          'Seeing which StarkZap v2 features are already implemented versus what is only planned.',
+                          'Finding the exact files that own swap, DCA, lending, circle funding, logs, and dashboard activity.',
+                          'Copying working code patterns from the snippets section into future features.',
+                        ]}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </HelpSection>
+            </TabsContent>
+
+            <TabsContent value="wallet-network" className="mt-0">
+              <HelpSection
+                id="wallet-network"
+                eyebrow="Wallet Model"
+                title="Wallet, Network, And Execution Mode"
+                description="The current build is deliberately opinionated: one social-login connector, one Sepolia environment, one shared wallet session across every route."
+                color="#4ECDC4"
+                icon={Wallet}
+              >
+                <div className="grid gap-4 lg:grid-cols-3">
+                  <div className="border-[2px] border-black bg-white p-5">
+                    <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Wallet Setup</p>
+                    <div className="mt-4">
+                      <BulletList
+                        items={[
+                          'The app currently exposes the Cartridge controller connector only.',
+                          'Users connect once from the header and the same account is reused in circles, swap, DCA, lending, logs, and dashboard activity.',
+                          'This keeps the challenge demo stable and avoids wallet-mode glitches from unsupported connector paths.',
+                        ]}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="border-[2px] border-black bg-white p-5">
+                    <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Network Setup</p>
+                    <div className="mt-4">
+                      <BulletList
+                        items={[
+                          'Everything is pointed at Starknet Sepolia.',
+                          'PublicNode is used as the default JSON-RPC provider and Cartridge RPC is used for balance-related reads.',
+                          'The paymaster provider is configured for AVNU sponsored execution.',
+                        ]}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="border-[2px] border-black bg-white p-5">
+                    <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Gasless Rules</p>
+                    <div className="mt-4">
+                      <BulletList
+                        items={[
+                          'Gasless mode only appears when the connected account exposes paymaster execution.',
+                          'If sponsored execution is unavailable, the UI falls back to User Pays and disables the gasless toggle.',
+                          'This logic is handled in the StarkZap action hook and the custom connected wallet adapter.',
+                        ]}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-6 flex flex-wrap gap-2">
+                  <FilePill path="src/lib/starknet.ts" />
+                  <FilePill path="src/lib/starkzapConnectedWallet.ts" />
+                  <FilePill path="src/hooks/useWallet.ts" />
+                  <FilePill path="src/hooks/useStarkZapActions.ts" />
+                </div>
+              </HelpSection>
+            </TabsContent>
+
+            <TabsContent value="circle-flows" className="mt-0">
+              <HelpSection
+                id="circle-flows"
+                eyebrow="CircleSave Core"
+                title="Circle Discovery, Creation, Join, And Contribution"
+                description="The app is still centered on savings circles. StarkZap improves funding and automation around that core, but the base circle flows remain on-chain CircleSave contract actions."
+                color="#FF6B6B"
+                icon={Users}
+              >
+                <div className="grid gap-4 lg:grid-cols-3">
+                  <div className="border-[2px] border-black bg-white p-5">
+                    <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Discover</p>
+                    <h3 className="mt-2 text-xl font-black">Browse Existing Circles</h3>
+                    <p className="mt-3 text-[15px] leading-relaxed text-black/70">
+                      The discover route pulls circles from the factory and surfaces current amount, members, type, category, and status.
+                    </p>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <RoutePill to="/circles" label="Discover Circles" />
+                      <FilePill path="src/hooks/useCircle.ts" />
+                    </div>
+                  </div>
+
+                  <div className="border-[2px] border-black bg-white p-5">
+                    <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Create</p>
+                    <h3 className="mt-2 text-xl font-black">Launch A New Circle</h3>
+                    <p className="mt-3 text-[15px] leading-relaxed text-black/70">
+                      The create page is a four-step form for name, description, amount, members, type, category, collateral ratio, and optional launch automation.
+                    </p>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <RoutePill to="/circles/create" label="Create Circle" />
+                      <FilePill path="src/pages/CreateCirclePage.tsx" />
+                    </div>
+                  </div>
+
+                  <div className="border-[2px] border-black bg-white p-5">
+                    <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Participate</p>
+                    <h3 className="mt-2 text-xl font-black">Join And Contribute</h3>
+                    <p className="mt-3 text-[15px] leading-relaxed text-black/70">
+                      Circle detail pages can approve STRK and then join or contribute. When StarkZap is used, those funding steps are chained before the circle action.
+                    </p>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <RoutePill to="/dashboard" label="Dashboard" />
+                      <FilePill path="src/pages/CircleDetailPage.tsx" />
+                      <FilePill path="src/hooks/useCircle.ts" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-6 border-[2px] border-black bg-[#FEFAE0] p-5">
+                  <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">What Gets Written On-Chain</p>
+                  <div className="mt-4">
+                    <BulletList
+                      items={[
+                        'Circle creation emits factory events and stores the new circle contract address.',
+                        'Member joins, approvals, contributions, payouts, missed payments, and slashing emit circle events.',
+                        'Collateral and reputation changes emit their own contract events, which later feed the logs page and the dashboard activity tab.',
+                      ]}
+                    />
+                  </div>
+                </div>
+              </HelpSection>
+            </TabsContent>
+
+            <TabsContent value="automation" className="mt-0">
+              <HelpSection
+                id="automation"
+                eyebrow="Funding Automation"
+                title="Launch Automation And In-Circle Funding"
+                description="This is where CircleSave becomes more than a plain savings-circle app. The current build pushes StarkZap into circle creation and circle participation instead of leaving it as isolated demo pages."
+                color="#FFE66D"
+                icon={Sparkles}
+              >
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <div className="border-[2px] border-black bg-white p-5">
+                    <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Launch Bundle</p>
+                    <h3 className="mt-2 text-2xl font-black">Create Circle + DCA</h3>
+                    <p className="mt-3 text-[15px] leading-relaxed text-black/70">
+                      The review step of circle creation can submit the new circle and a recurring STRK DCA plan together. The user chooses sell token, total budget, per-cycle amount, frequency, provider, and execution mode.
+                    </p>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <RoutePill to="/circles/create" label="Launch Bundle" />
+                      <FilePill path="src/pages/CreateCirclePage.tsx" />
+                      <FilePill path="src/hooks/useStarkZapActions.ts" />
+                    </div>
+                  </div>
+
+                  <div className="border-[2px] border-black bg-white p-5">
+                    <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Circle Detail Studio</p>
+                    <h3 className="mt-2 text-2xl font-black">Swap, DCA, Or Pull From Lending</h3>
+                    <p className="mt-3 text-[15px] leading-relaxed text-black/70">
+                      On the circle detail page, users can compare swap providers, set up a recurring STRK plan, or borrow/withdraw from Vesu before finishing the join or contribution action.
+                    </p>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <RoutePill to="/circles" label="Open A Circle" />
+                      <FilePill path="src/components/circles/CircleFundingStudio.tsx" />
+                      <FilePill path="src/hooks/useStarkZapActions.ts" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-6 border-[2px] border-black bg-[#fff8dc] p-5">
+                  <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Important Implementation Note</p>
+                  <p className="mt-3 text-[15px] leading-relaxed text-black/75">
+                    The current DCA implementation buys STRK for future circle funding, but it does not automatically submit the future monthly contribution transaction itself.
+                    Immediate circle actions are handled by the swap and lending funding flows.
+                  </p>
+                </div>
+              </HelpSection>
+            </TabsContent>
+
+            <TabsContent value="swap" className="mt-0">
+              <HelpSection
+                id="swap"
+                eyebrow="Swap Workspace"
+                title="Best-Route Swap Flow"
+                description="The swap route is the cleanest place to inspect StarkZap v2 routing directly. It compares providers, supports a best-route mode, and executes from the shared CircleSave wallet."
+                color="#4ECDC4"
+                icon={ArrowRightLeft}
+              >
+                <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+                  <div className="border-[2px] border-black bg-white p-5">
+                    <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">User Flow</p>
+                    <div className="mt-4">
+                      <BulletList
+                        items={[
+                          'Choose a recommended route or build a custom token pair manually.',
+                          'Preview AVNU and Ekubo outputs or let Best Route choose the leading venue.',
+                          'Switch between User Pays and Gasless when sponsored execution is supported by the connected wallet.',
+                          'Execute the route and keep the transaction hash plus explorer link in the page state.',
+                        ]}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="border-[2px] border-black bg-[#FEFAE0] p-5">
+                    <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Implementation Notes</p>
+                    <div className="mt-4">
+                      <BulletList
+                        items={[
+                          'Best Route compares providers through the StarkZap action hook instead of hardcoding one venue.',
+                          'The recommended Sepolia first test route remains STRK -> ETH because testnet liquidity is more reliable there.',
+                          'The same compare-and-send builder logic is reused by the in-circle funding studio for swap-based join or contribute actions.',
+                        ]}
+                      />
+                    </div>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <RoutePill to="/swap" label="Open Swap" />
+                      <FilePill path="src/pages/SwapPage.tsx" />
+                      <FilePill path="src/hooks/useStarkZapActions.ts" />
+                    </div>
+                  </div>
+                </div>
+              </HelpSection>
+            </TabsContent>
+
+            <TabsContent value="dca" className="mt-0">
+              <HelpSection
+                id="dca"
+                eyebrow="Recurring Orders"
+                title="DCA Order Model"
+                description="The DCA route is not just a form submit. It previews one cycle, creates provider-specific orders, loads live orders back into the page, and supports cancellation."
+                color="#FFE66D"
+                icon={Repeat}
+              >
+                <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+                  <div className="border-[2px] border-black bg-white p-5">
+                    <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">How A DCA Order Works Here</p>
+                    <div className="mt-4">
+                      <BulletList
+                        items={[
+                          'Total Sell Amount is the full order budget.',
+                          'Sell Per Cycle is how much gets spent each time the order runs.',
+                          'Frequency supports 12 hours, daily, and weekly presets in the current UI.',
+                          'Preview estimates one cycle, while the order list tracks the ongoing provider-backed order state.',
+                        ]}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="border-[2px] border-black bg-[#FEFAE0] p-5">
+                    <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">What Is Implemented</p>
+                    <div className="mt-4">
+                      <BulletList
+                        items={[
+                          'AVNU and Ekubo provider selection.',
+                          'Live order refresh and provider filtering.',
+                          'On-page cancellation through StarkZap cancel flow.',
+                          'Circle launch automation and in-circle DCA setup reuse the same underlying DCA create action.',
+                        ]}
+                      />
+                    </div>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <RoutePill to="/dca" label="Open DCA" />
+                      <FilePill path="src/pages/DcaPage.tsx" />
+                      <FilePill path="src/hooks/useStarkZapActions.ts" />
+                    </div>
+                  </div>
+                </div>
+              </HelpSection>
+            </TabsContent>
+
+            <TabsContent value="lending" className="mt-0">
+              <HelpSection
+                id="lending"
+                eyebrow="Vesu Liquidity"
+                title="Lending, Borrowing, And Health Preview"
+                description="The lending route owns the standalone Vesu interaction surface, while circle detail pages reuse lending actions when liquidity needs to flow back into a circle action."
+                color="#96CEB4"
+                icon={PiggyBank}
+              >
+                <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+                  <div className="border-[2px] border-black bg-white p-5">
+                    <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Working Actions</p>
+                    <div className="mt-4">
+                      <BulletList
+                        items={[
+                          'Deposit and withdraw a fixed amount.',
+                          'Withdraw max in one action.',
+                          'Borrow against a selected collateral asset.',
+                          'Repay debt and preview the resulting health path.',
+                          'Load market snapshots, open positions, max borrow quotes, and health simulations.',
+                        ]}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="border-[2px] border-black bg-[#FEFAE0] p-5">
+                    <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Where It Shows Up</p>
+                    <div className="mt-4">
+                      <BulletList
+                        items={[
+                          'The standalone lending route is the full Vesu workspace.',
+                          'The circle detail funding studio can withdraw, withdraw max, or borrow before the final join/contribute action.',
+                          'If the source asset is not STRK, the app can still swap into STRK before finishing the circle step.',
+                        ]}
+                      />
+                    </div>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <RoutePill to="/lending" label="Open Lending" />
+                      <FilePill path="src/pages/LendingPage.tsx" />
+                      <FilePill path="src/components/circles/CircleFundingStudio.tsx" />
+                      <FilePill path="src/hooks/useStarkZapActions.ts" />
+                    </div>
+                  </div>
+                </div>
+              </HelpSection>
+            </TabsContent>
+
+            <TabsContent value="visibility" className="mt-0">
+              <HelpSection
+                id="visibility"
+                eyebrow="Verification"
+                title="Public Logs And Wallet-Specific Dashboard Activity"
+                description="These two surfaces are related but intentionally different. One is public for everyone; the other is filtered for the connected wallet and its circles."
+                color="#DDA0DD"
+                icon={FileText}
+              >
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <div className="border-[2px] border-black bg-white p-5">
+                    <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Logs Page</p>
+                    <h3 className="mt-2 text-2xl font-black">Public Contract Feed</h3>
+                    <p className="mt-3 text-[15px] leading-relaxed text-black/70">
+                      The logs route reads factory, circle, reputation, and collateral events directly from Starknet. It does not require wallet login and does not depend on browser-local storage.
+                    </p>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <RoutePill to="/logs" label="Open Logs" />
+                      <FilePill path="src/pages/LogsPage.tsx" />
+                      <FilePill path="src/hooks/useOnchainActivityFeed.ts" />
+                    </div>
+                  </div>
+
+                  <div className="border-[2px] border-black bg-white p-5">
+                    <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Dashboard Activity</p>
+                    <h3 className="mt-2 text-2xl font-black">Connected Wallet View</h3>
+                    <p className="mt-3 text-[15px] leading-relaxed text-black/70">
+                      The dashboard activity tab reads the same contract-backed feed, then filters it to direct wallet events and events from circles the wallet belongs to. It is not browser-storage history.
+                    </p>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <RoutePill to="/dashboard" label="Open Dashboard" />
+                      <FilePill path="src/pages/ProfilePage.tsx" />
+                      <FilePill path="src/hooks/useOnchainActivityFeed.ts" />
+                    </div>
+                  </div>
+                </div>
+              </HelpSection>
+            </TabsContent>
+
+            <TabsContent value="sdk-map" className="mt-0">
+              <HelpSection
+                id="sdk-map"
+                eyebrow="Implementation Map"
+                title="Where StarkZap v2 Is Implemented"
+                description="This section maps each user-facing feature to the route and file that actually owns it, so you can move from product behavior to code quickly."
+                color="#F4A261"
+                icon={Blocks}
+              >
+                <div className="grid gap-4 md:grid-cols-2">
+                  {featureMap.map((item) => {
+                    const Icon = item.icon;
+
+                    return (
+                      <div key={item.title} className="border-[2px] border-black bg-white p-5">
+                        <div className="mb-4 flex items-start justify-between gap-4">
+                          <div
+                            className="flex h-12 w-12 shrink-0 items-center justify-center border-[2px] border-black"
+                            style={{ backgroundColor: item.color }}
+                          >
+                            <Icon className="h-5 w-5 text-black" />
+                          </div>
+                          <div className="flex flex-wrap justify-end gap-2">
+                            {item.routes.map((route) => (
+                              <RoutePill key={`${item.title}-${route.to}`} {...route} />
+                            ))}
+                          </div>
+                        </div>
+                        <h3 className="text-2xl font-black">{item.title}</h3>
+                        <p className="mt-3 text-[15px] leading-relaxed text-black/70">{item.summary}</p>
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          {item.files.map((file) => (
+                            <FilePill key={`${item.title}-${file}`} path={file} />
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </HelpSection>
+            </TabsContent>
+
+            <TabsContent value="code-snippets" className="mt-0">
+              <HelpSection
+                id="code-snippets"
+                eyebrow="Reference Snippets"
+                title="Code Patterns Already Live In The App"
+                description="These snippets are lifted from the current implementation patterns and are the fastest way to understand how CircleSave composes StarkZap v2 with its own circle contracts."
+                color="#45B7D1"
+                icon={Code2}
+              >
+                <div className="grid gap-6 xl:grid-cols-2">
+                  {codeSnippets.map((snippet) => (
+                    <SnippetCard key={snippet.title} {...snippet} />
+                  ))}
+                </div>
+              </HelpSection>
+            </TabsContent>
+
+            <TabsContent value="troubleshooting" className="mt-0">
+              <HelpSection
+                id="troubleshooting"
+                eyebrow="Known Caveats"
+                title="Troubleshooting And Current Limitations"
+                description="The guide is only useful if it is honest about testnet limits and current behavior. These are the main issues you should expect in the current Sepolia build."
+                color="#FF6B6B"
+                icon={Bug}
+              >
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  {troubleshootingTips.map((tip) => (
+                    <div key={tip.title} className="border-[2px] border-black bg-white p-5">
+                      <p className="text-lg font-black">{tip.title}</p>
+                      <p className="mt-3 text-[15px] leading-relaxed text-black/70">{tip.body}</p>
+                    </div>
+                  ))}
+                </div>
+              </HelpSection>
+            </TabsContent>
           </div>
-        </section>
+        </Tabs>
       </div>
     </div>
   );

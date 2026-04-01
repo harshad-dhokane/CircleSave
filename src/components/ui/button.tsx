@@ -5,19 +5,20 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-[15px] font-bold transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[4px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-[15px] font-bold transition-all disabled:pointer-events-none disabled:translate-x-0 disabled:translate-y-0 disabled:opacity-50 disabled:shadow-none [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[4px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/90",
+        default:
+          "border-[2px] border-black bg-primary text-primary-foreground shadow-[2px_2px_0px_0px_#1a1a1a] hover:-translate-x-0.5 hover:-translate-y-0.5 hover:bg-primary/90 hover:shadow-[4px_4px_0px_0px_#1a1a1a] active:translate-x-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_#1a1a1a] dark:border-[#3f4c76] dark:shadow-[2px_2px_0px_0px_#070b17] dark:hover:shadow-[4px_4px_0px_0px_#070b17] dark:active:shadow-[1px_1px_0px_0px_#070b17]",
         destructive:
-          "bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60",
+          "border-[2px] border-black bg-destructive text-white shadow-[2px_2px_0px_0px_#1a1a1a] hover:-translate-x-0.5 hover:-translate-y-0.5 hover:bg-destructive/90 hover:shadow-[4px_4px_0px_0px_#1a1a1a] active:translate-x-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_#1a1a1a] focus-visible:ring-destructive/20 dark:border-[#84465a] dark:focus-visible:ring-destructive/40 dark:bg-destructive/60 dark:shadow-[2px_2px_0px_0px_#070b17] dark:hover:shadow-[4px_4px_0px_0px_#070b17] dark:active:shadow-[1px_1px_0px_0px_#070b17]",
         outline:
-          "border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50",
+          "border-[2px] border-black bg-background shadow-[2px_2px_0px_0px_#1a1a1a] hover:-translate-x-0.5 hover:-translate-y-0.5 hover:bg-accent hover:text-accent-foreground hover:shadow-[4px_4px_0px_0px_#1a1a1a] active:translate-x-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_#1a1a1a] dark:bg-input/30 dark:border-[#3f4c76] dark:hover:bg-input/50 dark:shadow-[2px_2px_0px_0px_#070b17] dark:hover:shadow-[4px_4px_0px_0px_#070b17] dark:active:shadow-[1px_1px_0px_0px_#070b17]",
         secondary:
-          "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+          "border-[2px] border-black bg-secondary text-secondary-foreground shadow-[2px_2px_0px_0px_#1a1a1a] hover:-translate-x-0.5 hover:-translate-y-0.5 hover:bg-secondary/80 hover:shadow-[4px_4px_0px_0px_#1a1a1a] active:translate-x-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_#1a1a1a] dark:border-[#3f4c76] dark:shadow-[2px_2px_0px_0px_#070b17] dark:hover:shadow-[4px_4px_0px_0px_#070b17] dark:active:shadow-[1px_1px_0px_0px_#070b17]",
         ghost:
-          "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
+          "border-[2px] border-transparent bg-transparent hover:-translate-x-0.5 hover:-translate-y-0.5 hover:border-black hover:bg-accent hover:text-accent-foreground hover:shadow-[3px_3px_0px_0px_#1a1a1a] active:translate-x-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_#1a1a1a] dark:hover:border-[#3f4c76] dark:hover:bg-accent/50 dark:hover:shadow-[3px_3px_0px_0px_#070b17] dark:active:shadow-[1px_1px_0px_0px_#070b17]",
         link: "text-primary underline-offset-4 hover:underline",
       },
       size: {

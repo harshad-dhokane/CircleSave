@@ -1,11 +1,12 @@
 // CircleSave - Starknet Configuration
 import type { Chain } from '@starknet-react/chains';
-import { braavos, jsonRpcProvider, ready } from '@starknet-react/core';
+import { avnuPaymasterProvider, jsonRpcProvider } from '@starknet-react/core';
 import { ControllerConnector } from '@cartridge/connector';
 import { constants } from 'starknet';
 
 const RPC_URL = import.meta.env.VITE_STARKNET_RPC_URL || 'https://starknet-sepolia-rpc.publicnode.com';
 const CARTRIDGE_RPC_URL = import.meta.env.VITE_CARTRIDGE_RPC_URL || 'https://api.cartridge.gg/x/starknet/sepolia';
+const AVNU_PAYMASTER_API_KEY = import.meta.env.VITE_AVNU_PAYMASTER_API_KEY;
 const appChain: Chain = {
   id: BigInt('0x534e5f5345504f4c4941'),
   network: 'sepolia',
@@ -40,15 +41,19 @@ const cartridgeConnector = new ControllerConnector({
   lazyload: true,
 });
 
-export const connectors = [cartridgeConnector, ready(), braavos()];
+export const connectors = [cartridgeConnector];
 
 export const chains = [appChain];
 export const provider = jsonRpcProvider({
   rpc: () => ({ nodeUrl: RPC_URL }),
 });
+export const paymasterProvider = avnuPaymasterProvider({
+  apiKey: AVNU_PAYMASTER_API_KEY,
+});
 
 export const starknetConfig = {
   chains,
   provider,
+  paymasterProvider,
   connectors,
 };

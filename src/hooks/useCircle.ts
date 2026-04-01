@@ -3,7 +3,13 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAccount } from '@starknet-react/core';
 import { CairoCustomEnum, Contract, RpcProvider, cairo, CallData } from 'starknet';
 import { CONTRACTS, getVoyagerTxUrl } from '@/lib/constants';
-import { CIRCLE_FACTORY_ABI, CIRCLE_ABI, ERC20_ABI } from '@/lib/abis';
+import { CIRCLE_FACTORY_ABI, CIRCLE_ABI } from '@/lib/abis';
+import {
+  buildApproveCall,
+  buildContributeCall,
+  buildJoinCircleCall,
+  buildStartCircleCall,
+} from '@/lib/circleCalls';
 import type { Circle, CircleMember } from '@/types';
 
 const RPC_URL = import.meta.env.VITE_STARKNET_RPC_URL || 'https://starknet-sepolia-rpc.publicnode.com';
@@ -234,12 +240,10 @@ export function useJoinCircle() {
 
       const circleContract = newContract(CIRCLE_ABI, circleAddress, account);
       const collateralRequired = toBigIntValue(await circleContract.get_collateral_required());
-      
-      const strk = newContract(ERC20_ABI, CONTRACTS.STRK_TOKEN, account);
-      const approveResult = await strk.approve(circleAddress, cairo.uint256(collateralRequired));
-      await rpc.waitForTransaction(approveResult.transaction_hash);
-      
-      const joinResult = await circleContract.join();
+      const joinResult = await account.execute([
+        buildApproveCall(CONTRACTS.STRK_TOKEN, circleAddress, collateralRequired),
+        buildJoinCircleCall(circleAddress),
+      ]);
       setTxHash(joinResult.transaction_hash);
       await rpc.waitForTransaction(joinResult.transaction_hash);
       
@@ -275,12 +279,10 @@ export function useContribute() {
       setIsSubmitting(true);
       setError(null);
 
-      const strk = newContract(ERC20_ABI, CONTRACTS.STRK_TOKEN, account);
-      const approveResult = await strk.approve(circleAddress, cairo.uint256(amount));
-      await rpc.waitForTransaction(approveResult.transaction_hash);
-      
-      const circleContract = newContract(CIRCLE_ABI, circleAddress, account);
-      const result = await circleContract.contribute();
+      const result = await account.execute([
+        buildApproveCall(CONTRACTS.STRK_TOKEN, circleAddress, amount),
+        buildContributeCall(circleAddress),
+      ]);
       setTxHash(result.transaction_hash);
       await rpc.waitForTransaction(result.transaction_hash);
       
@@ -315,8 +317,9 @@ export function useStartCircle() {
       setIsSubmitting(true);
       setError(null);
 
-      const circleContract = newContract(CIRCLE_ABI, circleAddress, account);
-      const result = await circleContract.start_circle();
+      const result = await account.execute([
+        buildStartCircleCall(circleAddress),
+      ]);
       await rpc.waitForTransaction(result.transaction_hash);
       
       return {

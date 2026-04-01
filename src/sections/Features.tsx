@@ -38,8 +38,8 @@ const features = [
   },
   {
     icon: Globe,
-    title: 'Swap + DCA Ready',
-    description: 'Use StarkZap v2 inside the same app session to swap funds or set recurring DCA orders before or during your circle journey.',
+    title: 'StarkZap Workflows',
+    description: 'Use StarkZap v2 in the same app session to swap, create recurring DCA orders, or tap lending liquidity before and during circle participation.',
     color: '#DDA0DD',
     rotation: 2,
   },
@@ -63,7 +63,7 @@ export function Features() {
           </h2>
           <p className="animate-fade-in stagger-2 text-xl text-gray-600 max-w-3xl mx-auto leading-relaxed">
             Our platform provides all the tools you need to create, join, and manage 
-            savings circles with complete transparency, plus live StarkZap swap and DCA actions in the same wallet flow.
+            savings circles with complete transparency, plus live StarkZap swap, DCA, and lending actions in the same wallet flow.
           </p>
         </div>
 

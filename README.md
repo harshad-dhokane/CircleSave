@@ -1,102 +1,40 @@
 # CircleSave
 
-CircleSave is a Starknet Sepolia frontend for social savings circles plus StarkZap-powered wallet actions like swap, DCA, and lending.
+CircleSave is a Starknet Sepolia app for social savings circles built around the StarkZap v2 release. The product idea is simple:
 
-## Stack
+- users create or join savings circles on-chain
+- users fund those circles with StarkZap-powered swap, DCA, and lending flows
+- public logs and dashboard activity are read from contracts, not browser-only storage
 
-- React 19
-- TypeScript
-- Vite
-- Starknet React
-- starknet.js
-- StarkZap SDK v2
+This repo is the frontend for that experience. It combines CircleSave contract flows with StarkZap v2 routing, order automation, Vesu lending, and contract-backed activity views.
 
-## Local Development
+## Live Help Center
 
-1. Install dependencies:
+For the full in-app product guide, implementation walkthrough, and route-by-route StarkZap v2 feature map, open the deployed Help Center:
 
-```bash
-npm install
-```
+[https://circlesavezap.vercel.app/sdk](https://circlesavezap.vercel.app/sdk)
 
-2. Create your local env file:
+Alias route:
 
-```bash
-cp .env.example .env
-```
+[https://circlesavezap.vercel.app/help](https://circlesavezap.vercel.app/help)
 
-3. Fill in your local `.env` with your own values.
+## Core Idea
 
-Do not commit `.env`. It is already ignored by Git.
+CircleSave is not just a swap demo or a plain circle manager.
 
-4. Start the app:
+The goal of the build is to show StarkZap v2 as the execution layer behind a more useful product:
 
-```bash
-npm run dev
-```
+- social savings circles are the product surface
+- StarkZap v2 powers how users get funds into those circles
+- Circle creation, participation, automation, and visibility are tied together in one flow
 
-## Environment Variables
+That means users can:
 
-Add these variable names locally and in Vercel:
-
-```bash
-VITE_STARKNET_RPC_URL=your_rpc_url
-VITE_CARTRIDGE_RPC_URL=your_cartridge_rpc_url
-VITE_CIRCLE_FACTORY=your_circle_factory_address
-VITE_REPUTATION=your_reputation_address
-VITE_COLLATERAL_MANAGER=your_collateral_manager_address
-```
-
-These are client-side `VITE_` variables. Keep the actual values out of Git and set them in your local `.env` and in Vercel Project Settings.
-
-## Vercel Deployment
-
-This repo is set up for Vercel frontend deployment:
-
-- `vercel.json` adds SPA rewrites so client-side routes like `/profile`, `/swap`, and `/circles/:id` work after refresh.
-- `.vercelignore` excludes `contracts/` and other non-frontend files from the Vercel upload.
-- `vite.config.ts` uses `base: '/'` so nested routes load assets correctly on Vercel.
-
-### Deploy Steps
-
-1. Push this frontend folder to GitHub.
-2. Import the repo into Vercel.
-3. Keep the project root at the repo root.
-4. Framework preset: `Vite`.
-5. Build command:
-
-```bash
-npm run build
-```
-
-6. Output directory:
-
-```bash
-dist
-```
-
-7. In Vercel go to `Project Settings -> Environment Variables`.
-8. Add these keys:
-
-```bash
-VITE_STARKNET_RPC_URL
-VITE_CARTRIDGE_RPC_URL
-VITE_CIRCLE_FACTORY
-VITE_REPUTATION
-VITE_COLLATERAL_MANAGER
-```
-
-9. Paste your real values there.
-10. Deploy.
-
-## Notes
-
-- The deployed app is frontend-only.
-- The `contracts/` folder is not needed for Vercel deployment and is excluded from upload.
-- If you update deployed Starknet addresses later, update your local `.env` and the Vercel environment variables.
-
-## Build Check
-
-```bash
-npm run build
-```
+- discover circles
+- create circles
+- join and contribute on-chain
+- swap into STRK before joining or contributing
+- create recurring DCA orders to accumulate STRK
+- use Vesu lending actions before funding a circle
+- inspect public contract activity without signing in
+- inspect wallet-specific activity inside the dashboard

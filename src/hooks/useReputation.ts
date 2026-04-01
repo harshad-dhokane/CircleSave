@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAccount } from '@starknet-react/core';
 import { Contract, RpcProvider } from 'starknet';
 import { CONTRACTS, BADGE_NAMES, BADGE_DESCRIPTIONS, LEVEL_NAMES, LEVEL_COLORS, feltToString } from '@/lib/constants';
-import { REPUTATION_ABI } from '@/lib/abis';
+import { CIRCLE_ABI, CIRCLE_FACTORY_ABI, REPUTATION_ABI } from '@/lib/abis';
 
 const RPC_URL = import.meta.env.VITE_STARKNET_RPC_URL || 'https://starknet-sepolia-rpc.publicnode.com';
 const rpc = new RpcProvider({ nodeUrl: RPC_URL });
@@ -22,6 +22,49 @@ function toBigIntValue(value: any): bigint {
     return low + (high << 128n);
   }
   return BigInt(0);
+}
+
+function toHexAddress(value: any): string {
+  if (typeof value === 'string') {
+    return value.startsWith('0x') ? value : `0x${BigInt(value).toString(16)}`;
+  }
+  return `0x${toBigIntValue(value).toString(16)}`;
+}
+
+function getLeaderboardLevel(score: number) {
+  if (score >= 650) return 'DIAMOND';
+  if (score >= 450) return 'PLATINUM';
+  if (score >= 280) return 'GOLD';
+  if (score >= 140) return 'SILVER';
+  if (score >= 40) return 'BRONZE';
+  return 'NEWCOMER';
+}
+
+async function fetchCircleSummaries() {
+  const factory = newContract(CIRCLE_FACTORY_ABI, CONTRACTS.CIRCLE_FACTORY);
+  const count = Number(await factory.get_circle_count());
+
+  if (count === 0) {
+    return [];
+  }
+
+  const circles: Array<{ monthlyAmount: bigint; creator: string; contractAddress: string }> = [];
+  const batchSize = 10;
+
+  for (let offset = 0; offset < count; offset += batchSize) {
+    const limit = Math.min(batchSize, count - offset);
+    const page = await factory.get_circles(offset, limit);
+
+    for (const info of page) {
+      circles.push({
+        monthlyAmount: toBigIntValue(info.monthly_amount),
+        creator: toHexAddress(info.creator).toLowerCase(),
+        contractAddress: toHexAddress(info.contract_address),
+      });
+    }
+  }
+
+  return circles;
 }
 
 export interface UserReputationStats {
@@ -140,10 +183,117 @@ export function useLeaderboard() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Leaderboard requires an off-chain indexer (e.g. Apibara).
-    // Returns empty for now - the UI shows a "Coming Soon" placeholder.
-    setLeaders([]);
-    setIsLoading(false);
+    let cancelled = false;
+
+    async function fetchLeaderboard() {
+      if (CONTRACTS.CIRCLE_FACTORY === '0x0') {
+        setLeaders([]);
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        setIsLoading(true);
+        const circles = await fetchCircleSummaries();
+        const stats = new Map<string, {
+          circlesJoined: number;
+          circlesCreated: number;
+          paymentsMade: number;
+          paymentsLate: number;
+          totalVolume: bigint;
+          collateralLocked: bigint;
+        }>();
+
+        const getWalletStats = (walletAddress: string) => {
+          const normalized = walletAddress.toLowerCase();
+          const current = stats.get(normalized);
+          if (current) return current;
+
+          const next = {
+            circlesJoined: 0,
+            circlesCreated: 0,
+            paymentsMade: 0,
+            paymentsLate: 0,
+            totalVolume: 0n,
+            collateralLocked: 0n,
+          };
+          stats.set(normalized, next);
+          return next;
+        };
+
+        for (const circle of circles) {
+          getWalletStats(circle.creator).circlesCreated += 1;
+
+          const circleContract = newContract(CIRCLE_ABI, circle.contractAddress);
+          const memberList = await circleContract.get_members();
+
+          for (const member of memberList) {
+            const memberAddress = toHexAddress(member.address);
+            const memberStats = getWalletStats(memberAddress);
+            const paymentsMade = Number(member.payments_made);
+            const paymentsLate = Number(member.payments_late);
+            const collateralLocked = toBigIntValue(member.collateral_locked);
+
+            memberStats.circlesJoined += 1;
+            memberStats.paymentsMade += paymentsMade;
+            memberStats.paymentsLate += paymentsLate;
+            memberStats.totalVolume += circle.monthlyAmount * BigInt(paymentsMade);
+            memberStats.collateralLocked += collateralLocked;
+          }
+        }
+
+        const nextLeaders = [...stats.entries()]
+          .map(([walletAddress, walletStats]) => {
+            const onTimePayments = Math.max(walletStats.paymentsMade - walletStats.paymentsLate, 0);
+            const totalVolumeScore = Number(walletStats.totalVolume / 10n ** 19n);
+            const collateralScore = Number(walletStats.collateralLocked / 10n ** 20n);
+            const reputationScore = Math.max(
+              walletStats.circlesJoined * 20 +
+              walletStats.circlesCreated * 28 +
+              onTimePayments * 12 -
+              walletStats.paymentsLate * 10 +
+              totalVolumeScore +
+              collateralScore,
+              0,
+            );
+
+            return {
+              address: walletAddress,
+              reputationScore,
+              circlesJoined: walletStats.circlesJoined,
+              paymentsMade: walletStats.paymentsMade,
+              level: getLeaderboardLevel(reputationScore),
+            };
+          })
+          .filter((entry) => entry.circlesJoined > 0 || entry.paymentsMade > 0)
+          .sort((left, right) => {
+            if (left.reputationScore === right.reputationScore) {
+              return right.paymentsMade - left.paymentsMade;
+            }
+            return right.reputationScore - left.reputationScore;
+          })
+          .slice(0, 12);
+
+        if (!cancelled) {
+          setLeaders(nextLeaders);
+        }
+      } catch (error) {
+        console.error('Error building leaderboard:', error);
+        if (!cancelled) {
+          setLeaders([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    void fetchLeaderboard();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return { leaders, isLoading };

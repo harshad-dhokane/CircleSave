@@ -3,7 +3,6 @@ import { Button } from '@/components/ui/button';
 import {
   ArrowRight,
   ArrowRightLeft,
-  FileText,
   PiggyBank,
   Repeat,
   Shield,
@@ -20,35 +19,35 @@ const heroActionCards = [
     color: '#FF6B6B',
   },
   {
-    title: 'AVNU Swap',
-    description: 'Route assets into STRK without leaving the app.',
+    title: 'Best-Route Swap',
+    description: 'Compare AVNU and Ekubo before routing assets into STRK.',
     icon: ArrowRightLeft,
     color: '#4ECDC4',
   },
   {
     title: 'Recurring DCA',
-    description: 'Automate repeat buys from the same wallet.',
+    description: 'Automate repeat buys and manage them from the same wallet.',
     icon: Repeat,
     color: '#FFE66D',
   },
   {
-    title: 'Shared Logs',
-    description: 'Review wallet actions and jump to Voyager.',
-    icon: FileText,
-    color: '#DDA0DD',
+    title: 'Vesu Lending',
+    description: 'Borrow, repay, and fund circles from active positions.',
+    icon: PiggyBank,
+    color: '#96CEB4',
   },
 ] as const;
 
 const featurePills = [
   'Single Wallet Session',
-  'StarkZap v2 Actions',
+  'Best Route + DCA Providers',
   'Voyager-linked Logs',
-  'Collateral-backed Circles',
+  'Gasless + Collateral-backed Circles',
 ];
 
 export function Hero() {
   return (
-    <section className="relative overflow-hidden border-b-[2px] border-black bg-white">
+    <section className="content-divider-bottom relative overflow-hidden border-b-[2px] border-black bg-white">
       <div className="absolute inset-0 neo-grid-bg opacity-[0.18]" />
       <div className="absolute left-[8%] top-16 h-28 w-28 rounded-full bg-[#FF6B6B]/15 blur-3xl" />
       <div className="absolute right-[10%] top-28 h-36 w-36 rounded-full bg-[#4ECDC4]/15 blur-3xl" />
@@ -67,11 +66,11 @@ export function Hero() {
             <h1 className="max-w-4xl text-5xl font-black leading-[0.94] md:text-6xl xl:text-[5.35rem]">
               Run savings circles.
               <span className="block text-[#FF6B6B]">Swap into STRK.</span>
-              <span className="block">Automate DCA.</span>
+              <span className="block">Borrow, lend, and automate.</span>
             </h1>
             <p className="mt-6 max-w-2xl text-lg font-medium leading-relaxed text-black/72 md:text-xl">
               CircleSave turns one Starknet wallet into a full savings workflow: community circles, live
-              StarkZap-powered swaps, recurring DCA orders, lending, and shared transaction tracking.
+              StarkZap-powered swaps, recurring DCA orders, lending, and contract-backed activity tracking.
             </p>
 
             <div className="mt-8 flex flex-col gap-4 sm:flex-row">
@@ -119,15 +118,15 @@ export function Hero() {
                 <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Automation</p>
                 <p className="mt-2 text-2xl font-black">Recurring DCA</p>
                 <p className="mt-2 text-sm leading-relaxed text-black/65">
-                  Turn one-time intent into a repeatable plan with wallet-linked activity logs.
+                  Turn one-time intent into a repeatable plan with contract-backed logs and dashboard activity.
                 </p>
               </div>
             </div>
           </div>
 
           <div className="relative animate-slide-in-right">
-            <div className="absolute -top-4 right-6 hidden md:block">
-              <div className="neo-chip bg-[#FFE66D]">
+            <div className="absolute -top-4 right-6 z-20 hidden md:block">
+              <div className="neo-chip bg-[#FFE66D] text-black">
                 <Shield className="h-4 w-4" />
                 Collateral-backed + On-chain
               </div>
@@ -177,7 +176,7 @@ export function Hero() {
                     <p className="text-xs font-black uppercase tracking-[0.1em] text-white/60">Wallet State</p>
                     <p className="mt-3 text-3xl font-black">Sepolia Ready</p>
                     <p className="mt-2 text-sm leading-relaxed text-white/75">
-                      Social login, extension wallets, and StarkZap actions all run through the same account.
+                      Cartridge social login, CircleSave actions, and StarkZap flows all reuse the same account.
                     </p>
                   </div>
                   <div className="border-[2px] border-black bg-[#FEFAE0] p-5 shadow-[4px_4px_0px_0px_#1a1a1a]">
@@ -199,10 +198,10 @@ export function Hero() {
               </div>
             </div>
 
-            <div className="absolute -bottom-5 left-5 hidden md:block">
-              <div className="neo-chip bg-[#4ECDC4] animate-drift">
+            <div className="absolute -bottom-5 left-5 z-20 hidden md:block">
+              <div className="neo-chip animate-drift bg-[#4ECDC4] text-black">
                 <ArrowRightLeft className="h-4 w-4" />
-                AVNU swap + DCA live
+                AVNU + Ekubo routing live
               </div>
             </div>
           </div>

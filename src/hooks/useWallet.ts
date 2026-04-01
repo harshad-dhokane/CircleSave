@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo } from 'react';
 import { CONTRACTS } from '@/lib/constants';
 import { formatAddress } from '@/lib/constants';
 import { toast } from 'sonner';
+import { getExternalIssueNotice } from '@/lib/externalIssues';
 
 function formatTokenBalance(balance: { formatted: string; symbol: string; value: bigint } | null) {
   if (!balance) {
@@ -22,19 +23,19 @@ export function useWallet() {
   const { address, isConnected, isConnecting, status } = useAccount();
   const { connectAsync, connectors, error: connectError } = useConnect();
   const { disconnect } = useDisconnect();
-  const { data: strkBalanceData, isLoading: strkBalanceLoading } = useBalance({
+  const { data: strkBalanceData, isLoading: strkBalanceLoading, error: strkBalanceError } = useBalance({
     address: address as `0x${string}` | undefined,
     token: CONTRACTS.STRK_TOKEN as `0x${string}`,
     watch: true,
     refetchInterval: 15000,
   });
-  const { data: ethBalanceData, isLoading: ethBalanceLoading } = useBalance({
+  const { data: ethBalanceData, isLoading: ethBalanceLoading, error: ethBalanceError } = useBalance({
     address: address as `0x${string}` | undefined,
     token: CONTRACTS.ETH_TOKEN as `0x${string}`,
     watch: true,
     refetchInterval: 15000,
   });
-  const { data: usdcBalanceData, isLoading: usdcBalanceLoading } = useBalance({
+  const { data: usdcBalanceData, isLoading: usdcBalanceLoading, error: usdcBalanceError } = useBalance({
     address: address as `0x${string}` | undefined,
     token: CONTRACTS.USDC_TOKEN as `0x${string}`,
     watch: true,
@@ -117,6 +118,14 @@ export function useWallet() {
 
   const balance = strkBalance;
   const balanceLoading = strkBalanceLoading;
+  const walletNotice = useMemo(() => {
+    return (
+      getExternalIssueNotice(strkBalanceError) ||
+      getExternalIssueNotice(ethBalanceError) ||
+      getExternalIssueNotice(usdcBalanceError) ||
+      null
+    );
+  }, [ethBalanceError, strkBalanceError, usdcBalanceError]);
 
   const assetBalances = [
     { key: 'STRK', label: 'STRK', balance: strkBalance, isLoading: strkBalanceLoading },
@@ -133,6 +142,7 @@ export function useWallet() {
     balance,
     balanceLoading,
     assetBalances,
+    walletNotice,
     connectWallet,
     disconnectWallet,
     connectors,

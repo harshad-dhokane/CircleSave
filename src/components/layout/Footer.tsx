@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Users, Github, Twitter, MessageCircle, Heart } from 'lucide-react';
+import { Users, Github, Twitter, MessageCircle, Heart, Send } from 'lucide-react';
 
 type FooterLink = {
   label: string;
@@ -17,16 +17,16 @@ const footerLinks = {
     { label: 'Leaderboard', href: '/leaderboard' },
   ],
   resources: [
-    { label: 'Documentation', href: '/sdk' },
+    { label: 'Help Center', href: '/sdk' },
     { label: 'How It Works', href: '/how-it-works' },
     { label: 'Smart Contracts', href: '/contracts' },
     { label: 'API', href: '/api' },
   ],
   community: [
-    { label: 'Discord', href: 'https://starknet.io/discord', external: true },
-    { label: 'Twitter', href: 'https://x.com/Starknet', external: true },
-    { label: 'GitHub', href: 'https://github.com/starknet-io', external: true },
-    { label: 'Forum', href: 'https://community.starknet.io/', external: true },
+    { label: 'Discord', href: 'https://discord.gg/q6cY4QwH', external: true },
+    { label: 'Twitter', href: 'https://x.com/harsshadd', external: true },
+    { label: 'GitHub', href: 'https://github.com/harshad-dhokane', external: true },
+    { label: 'Telegram', href: 'https://t.me/+919604647941', external: true },
   ],
   legal: [
     { label: 'Terms of Service', href: '/terms' },
@@ -61,22 +61,28 @@ function FooterNavLink({ link }: { link: FooterLink }) {
 
 const socialLinks: Array<{ href: string; icon: typeof Twitter; hoverClassName: string; label: string }> = [
   {
-    href: 'https://x.com/Starknet',
+    href: 'https://x.com/harsshadd',
     icon: Twitter,
     hoverClassName: 'hover:bg-[#FF6B6B] hover:border-[#FF6B6B]',
     label: 'Twitter',
   },
   {
-    href: 'https://github.com/starknet-io',
+    href: 'https://github.com/harshad-dhokane',
     icon: Github,
     hoverClassName: 'hover:bg-[#4ECDC4] hover:border-[#4ECDC4]',
     label: 'GitHub',
   },
   {
-    href: 'https://starknet.io/discord',
+    href: 'https://discord.gg/q6cY4QwH',
     icon: MessageCircle,
     hoverClassName: 'hover:bg-[#FFE66D] hover:border-[#FFE66D] hover:text-black',
     label: 'Discord',
+  },
+  {
+    href: 'https://t.me/+919604647941',
+    icon: Send,
+    hoverClassName: 'hover:bg-[#DDA0DD] hover:border-[#DDA0DD]',
+    label: 'Telegram',
   },
 ];
 
@@ -84,9 +90,9 @@ export function Footer() {
   return (
     <footer className="bg-black text-white">
       <div className="page-shell py-16 md:py-20">
-        <div className="grid gap-12 md:grid-cols-2 lg:grid-cols-[1.35fr_1.35fr_1fr_1fr_1fr_1fr]">
+        <div className="grid grid-cols-2 gap-x-8 gap-y-10 md:gap-12 lg:grid-cols-[1.35fr_1.35fr_1fr_1fr_1fr_1fr]">
           {/* Brand */}
-          <div className="lg:col-span-2">
+          <div className="col-span-2 lg:col-span-2">
             <Link to="/" className="flex items-center gap-2 mb-4">
               <div className="w-10 h-10 bg-[#FF6B6B] border-[3px] border-white flex items-center justify-center">
                 <Users className="w-5 h-5 text-white" />

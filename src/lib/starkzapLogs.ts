@@ -4,7 +4,7 @@ export type StarkZapLogKind = 'swap' | 'dca' | 'lending';
 export type StarkZapLogStatus = 'submitted' | 'confirmed' | 'failed';
 
 export interface StarkZapLogDetails {
-  action?: 'deposit' | 'withdraw';
+  action?: 'deposit' | 'withdraw' | 'borrow' | 'repay';
   inputAmount?: string;
   inputToken?: string;
   outputAmount?: string;
@@ -51,9 +51,10 @@ function inferLegacyDetails(entry: StarkZapLogEntry): StarkZapLogDetails | undef
   }
 
   const summary = entry.summary.trim();
+  const normalizedSummary = summary.replace(/\s+/g, ' ');
 
   if (entry.kind === 'lending') {
-    const depositMatch = summary.match(/^Deposit\s+([\d.]+)\s+([A-Z0-9]+)\s+into\b/i);
+    const depositMatch = normalizedSummary.match(/^Deposit\s+([\d.]+)\s+([A-Z0-9]+)\s+into\b/i);
     if (depositMatch) {
       return {
         action: 'deposit',
@@ -62,7 +63,7 @@ function inferLegacyDetails(entry: StarkZapLogEntry): StarkZapLogDetails | undef
       };
     }
 
-    const withdrawMatch = summary.match(/^Withdraw\s+([\d.]+)\s+([A-Z0-9]+)\s+from\b/i);
+    const withdrawMatch = normalizedSummary.match(/^Withdraw\s+([\d.]+)\s+([A-Z0-9]+)\s+from\b/i);
     if (withdrawMatch) {
       return {
         action: 'withdraw',
@@ -73,7 +74,9 @@ function inferLegacyDetails(entry: StarkZapLogEntry): StarkZapLogDetails | undef
   }
 
   if (entry.kind === 'swap') {
-    const swapMatch = summary.match(/^([\d.]+)\s+([A-Z0-9]+)\s+->\s+([A-Z0-9]+)/i);
+    const swapMatch = normalizedSummary.match(
+      /^(?:Swap\s+|Swapped\s+)?([\d.]+)\s+([A-Z0-9]+)\s*(?:->|to|for)\s+([A-Z0-9]+)/i,
+    );
     if (swapMatch) {
       return {
         inputAmount: swapMatch[1],
@@ -84,8 +87,8 @@ function inferLegacyDetails(entry: StarkZapLogEntry): StarkZapLogDetails | undef
   }
 
   if (entry.kind === 'dca') {
-    const dcaMatch = summary.match(
-      /^([\d.]+)\s+([A-Z0-9]+)\s+budget\s+•\s+([\d.]+)\s+([A-Z0-9]+)\s+every\s+([A-Z0-9]+)\s+into\s+([A-Z0-9]+)/i,
+    const dcaMatch = normalizedSummary.match(
+      /^(?:DCA\s+)?([\d.]+)\s+([A-Z0-9]+)\s+(?:budget|total)(?:\s*(?:•|·|-|—|:)\s*|\s+)([\d.]+)\s+([A-Z0-9]+)\s+every\s+([A-Z0-9]+)\s+into\s+([A-Z0-9]+)/i,
     );
 
     if (dcaMatch) {
@@ -114,6 +117,10 @@ function normalizeLogEntry(entry: StarkZapLogEntry): StarkZapLogEntry {
     ...entry,
     details,
   };
+}
+
+export function getStarkZapLogDetails(entry: StarkZapLogEntry): StarkZapLogDetails | undefined {
+  return entry.details || inferLegacyDetails(entry);
 }
 
 export function getStarkZapLogsEventName() {
@@ -193,7 +200,7 @@ export function clearStarkZapLogs() {
 }
 
 export function getStarkZapLogAmountText(entry: StarkZapLogEntry): string | null {
-  const details = entry.details || inferLegacyDetails(entry);
+  const details = getStarkZapLogDetails(entry);
 
   if (!details) {
     return null;
@@ -213,8 +220,25 @@ export function getStarkZapLogAmountText(entry: StarkZapLogEntry): string | null
   }
 
   if (entry.kind === 'lending' && details.inputAmount && details.inputToken) {
-    const action = details.action === 'withdraw' ? 'Withdraw' : 'Deposit';
+    const action = details.action === 'withdraw'
+      ? 'Withdraw'
+      : details.action === 'borrow'
+        ? 'Borrow'
+        : details.action === 'repay'
+          ? 'Repay'
+          : 'Deposit';
     return `${action} ${details.inputAmount} ${details.inputToken}`;
+  }
+
+  if (entry.kind === 'lending' && details.inputToken) {
+    const action = details.action === 'withdraw'
+      ? 'Withdraw'
+      : details.action === 'borrow'
+        ? 'Borrow'
+        : details.action === 'repay'
+          ? 'Repay'
+          : 'Deposit';
+    return `${action} ${details.inputToken}`;
   }
 
   return null;

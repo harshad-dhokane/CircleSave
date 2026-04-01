@@ -57,7 +57,7 @@ function formatUnits(value: bigint, decimals: number) {
 
 function needsReceiptBackfill(log: StarkZapLogEntry) {
   if (log.kind === 'swap') {
-    return !log.details?.inputAmount;
+    return !log.details?.inputAmount || !log.details?.outputAmount;
   }
 
   if (log.kind === 'dca') {

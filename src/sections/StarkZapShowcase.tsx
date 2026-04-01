@@ -9,19 +9,19 @@ const implementationPoints = [
     color: '#FF6B6B',
   },
   {
-    title: 'AVNU Swap Live',
-    description: 'StarkZap swap preview and execution are now live in the app, so users can route token trades without leaving CircleSave.',
+    title: 'Best Route Swap',
+    description: 'Swap now compares AVNU and Ekubo, shows best-route output, and can execute with sponsored mode when available.',
     color: '#4ECDC4',
   },
   {
-    title: 'AVNU DCA Live',
-    description: 'Recurring DCA orders are supported through StarkZap v2, with the same wallet identity used across the rest of the product.',
+    title: 'Circle Automation',
+    description: 'New circles can launch with attached DCA plans, and existing circles can be funded from swap or lending flows in one sequence.',
     color: '#FFE66D',
   },
   {
-    title: 'Shared Logs + Voyager',
-    description: 'Every StarkZap action is written to shared logs with status tracking and direct explorer links for verification.',
-    color: '#DDA0DD',
+    title: 'Public Proof Layer',
+    description: 'On-chain circle data now feeds leaderboard reputation, and the logs page surfaces public factory, circle, reputation, and collateral events with Voyager links.',
+    color: '#96CEB4',
   },
 ] as const;
 
@@ -29,28 +29,28 @@ const actionLanes = [
   {
     href: '/swap',
     title: 'Open Swap',
-    description: 'Preview quotes and execute live routes from your connected app wallet.',
+    description: 'Preview AVNU vs Ekubo and execute the route that best fits the moment.',
     icon: ArrowRightLeft,
     color: '#4ECDC4',
   },
   {
     href: '/dca',
     title: 'Open DCA',
-    description: 'Create recurring buys with StarkZap v2 from the same account you use for circles.',
+    description: 'Create, review, and cancel recurring provider-aware DCA plans from the same account you use for circles.',
     icon: Repeat,
     color: '#FFE66D',
   },
   {
     href: '/lending',
     title: 'Open Lending',
-    description: 'Move into Vesu lending without a separate login or isolated SDK wallet flow.',
+    description: 'Deposit, withdraw, borrow, and repay on Vesu while previewing health and max-borrow limits.',
     icon: PiggyBank,
     color: '#96CEB4',
   },
   {
     href: '/logs',
     title: 'Review Logs',
-    description: 'Check submitted StarkZap activity and jump to Voyager from one shared audit trail.',
+    description: 'Browse public CircleSave contract activity and jump to Voyager from one shared audit trail.',
     icon: FileText,
     color: '#FF6B6B',
   },
@@ -69,12 +69,12 @@ export function StarkZapShowcase() {
               <span className="text-base font-black uppercase tracking-[0.08em]">New In This Build</span>
             </div>
             <h2 className="max-w-3xl text-4xl font-black leading-tight md:text-5xl">
-              StarkZap swap and DCA are now part of the core
+              StarkZap liquidity and automation are now part of the core
               <span className="text-[#FF6B6B]"> CircleSave workflow.</span>
             </h2>
             <p className="mt-5 max-w-2xl text-lg leading-relaxed text-black/70">
               The landing page now reflects the real implementation: users connect one wallet, explore circles,
-              swap through StarkZap, create recurring DCA orders, and verify activity from shared logs.
+              route through StarkZap providers, automate recurring funding, tap Vesu positions, and verify public contract activity plus reputation from the same app.
             </p>
 
             <div className="mt-8 grid gap-4 sm:grid-cols-2">
@@ -96,13 +96,13 @@ export function StarkZapShowcase() {
             <div className="mt-8 flex flex-wrap gap-4">
               <Link to="/sdk">
                 <Button className="neo-button-primary">
-                  Open SDK Guide
+                  Open Help Center
                   <ArrowRight className="ml-2 h-5 w-5" />
                 </Button>
               </Link>
-              <Link to="/profile">
+              <Link to="/dashboard">
                 <Button variant="outline" className="border-[3px] border-black font-black">
-                  View Profile Activity
+                  Open Dashboard
                 </Button>
               </Link>
             </div>
