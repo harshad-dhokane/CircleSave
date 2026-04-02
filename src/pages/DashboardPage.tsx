@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   ArrowRightLeft,
+  Blocks,
   CheckCircle,
   Clock,
   ExternalLink,
@@ -23,15 +24,18 @@ import {
 import { CONTRACTS, formatAddress, formatAmountShort, getVoyagerContractUrl } from '@/lib/constants';
 
 const LOG_KIND_META = {
+  batch: { label: 'Batch', color: '#F4A261', icon: Blocks },
   swap: { label: 'Swap', color: '#4ECDC4', icon: ArrowRightLeft },
   dca: { label: 'DCA', color: '#FFE66D', icon: Repeat },
   lending: { label: 'Lending', color: '#96CEB4', icon: PiggyBank },
+  staking: { label: 'Staking', color: '#45B7D1', icon: TrendingUp },
 } as const;
 
 const quickActions = [
   { to: '/circles', icon: Users, color: '#FF6B6B', title: 'Discover Circles', desc: 'Find new groups and open spots.' },
   { to: '/circles/create', icon: Plus, color: '#4ECDC4', title: 'Create Circle', desc: 'Launch a new community savings plan.' },
   { to: '/swap', icon: ArrowRightLeft, color: '#DDA0DD', title: 'Swap', desc: 'Route into STRK from your connected wallet.' },
+  { to: '/batching', icon: Blocks, color: '#F4A261', title: 'Batching', desc: 'Sign multiple transfers in one TxBuilder flow.' },
   { to: '/dca', icon: Repeat, color: '#FFE66D', title: 'DCA', desc: 'Automate recurring buys with one wallet.' },
   { to: '/lending', icon: PiggyBank, color: '#96CEB4', title: 'Lending', desc: 'Put idle assets to work on Vesu.' },
   { to: '/logs', icon: FileText, color: '#F4A261', title: 'Logs', desc: 'Check submitted wallet activity and status.' },

@@ -83,6 +83,13 @@ const guideTopics: GuideTopic[] = [
     icon: ArrowRightLeft,
   },
   {
+    id: 'batching',
+    label: 'Batching',
+    summary: 'User-defined TxBuilder batches with mixed tokens and recipients.',
+    color: '#F4A261',
+    icon: Blocks,
+  },
+  {
     id: 'dca',
     label: 'DCA',
     summary: 'Recurring order model, previews, refresh, and cancellation.',
@@ -194,6 +201,22 @@ const featureMap: FeatureMapEntry[] = [
     ],
   },
   {
+    title: 'Transaction Batching Demo',
+    summary:
+      'The dedicated batching page uses the StarkZap v2 TxBuilder directly so judges can preview and send a user-defined mixed-token batch from one wallet signature.',
+    color: '#F4A261',
+    icon: Blocks,
+    routes: [
+      { label: 'Batching', to: '/batching' },
+      { label: 'Logs', to: '/logs' },
+    ],
+    files: [
+      'src/pages/BatchingPage.tsx',
+      'src/hooks/useStarkZapActions.ts',
+      'src/lib/starkzapLogs.ts',
+    ],
+  },
+  {
     title: 'Atomic Circle Funding',
     summary:
       'Circle detail pages can chain StarkZap funding with circle actions, so the app can swap or pull liquidity first and then join or contribute in the same sequence.',
@@ -274,6 +297,21 @@ export const paymasterProvider = avnuPaymasterProvider({
 
 this.registerSwapProvider(new EkuboSwapProvider());
 this.dca().registerProvider(new EkuboDcaProvider());`,
+  },
+  {
+    title: 'TxBuilder Multi-Transfer Batch',
+    file: 'src/pages/BatchingPage.tsx',
+    summary:
+      'The judge-facing batching demo lets each row pick its own token, then groups them into one TxBuilder chain before signing.',
+    code: String.raw`const tx = await wallet.tx()
+  .transfer(sepoliaTokens.STRK, [
+    { to: fromAddress(recipientOne), amount: Amount.parse('0.05', sepoliaTokens.STRK) },
+    { to: fromAddress(recipientTwo), amount: Amount.parse('0.10', sepoliaTokens.STRK) },
+  ])
+  .transfer(sepoliaTokens.USDC, [
+    { to: fromAddress(recipientThree), amount: Amount.parse('1', sepoliaTokens.USDC) },
+  ])
+  .send();`,
   },
   {
     title: 'Atomic Swap + Circle Action',
@@ -515,6 +553,11 @@ export function SdkPage() {
                   Open Swap
                 </Button>
               </Link>
+              <Link to="/batching">
+                <Button variant="outline" className="border-[2px] border-black">
+                  Open Batching
+                </Button>
+              </Link>
               <Link to="/logs">
                 <Button variant="outline" className="border-[2px] border-black">
                   View Logs
@@ -590,6 +633,7 @@ export function SdkPage() {
                       <BulletList
                         items={[
                           'The old SDK summary page has been replaced by this route-level guide so the product now has one place that explains the real implementation.',
+                          'The dedicated batching route now supports user-defined row count with mixed-token transfers in one TxBuilder transaction.',
                           'Circle creation can launch with a recurring STRK DCA order, and circle detail pages include embedded StarkZap funding flows.',
                           'The public logs page now reads CircleSave contract events directly from Starknet without requiring a wallet connection.',
                           'Dashboard activity now reads contract events for the connected wallet and circles that wallet belongs to.',
@@ -605,7 +649,7 @@ export function SdkPage() {
                         items={[
                           'Understanding what each route is supposed to do before you click into it.',
                           'Seeing which StarkZap v2 features are already implemented versus what is only planned.',
-                          'Finding the exact files that own swap, DCA, lending, circle funding, logs, and dashboard activity.',
+                          'Finding the exact files that own batching, swap, DCA, lending, circle funding, logs, and dashboard activity.',
                           'Copying working code patterns from the snippets section into future features.',
                         ]}
                       />
@@ -823,6 +867,52 @@ export function SdkPage() {
                       <RoutePill to="/swap" label="Open Swap" />
                       <FilePill path="src/pages/SwapPage.tsx" />
                       <FilePill path="src/hooks/useStarkZapActions.ts" />
+                    </div>
+                  </div>
+                </div>
+              </HelpSection>
+            </TabsContent>
+
+            <TabsContent value="batching" className="mt-0">
+              <HelpSection
+                id="batching"
+                eyebrow="TxBuilder Demo"
+                title="User-Defined Batch Transactions"
+                description="The batching route is the clearest place to inspect StarkZap v2 TxBuilder batching directly. Users can add as many rows as they want, pick different tokens per row, and sign one atomic transaction."
+                color="#F4A261"
+                icon={Blocks}
+              >
+                <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+                  <div className="border-[2px] border-black bg-white p-5">
+                    <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">What The Page Supports</p>
+                    <div className="mt-4">
+                      <BulletList
+                        items={[
+                          'Users can add or remove transfer rows dynamically instead of working with a fixed batch size.',
+                          'Each row can target a different recipient address.',
+                          'Each row can also choose a different token, so one transaction can mix STRK, ETH, and USDC transfers.',
+                          'Preview resolves the final Starknet call count and checks simulation before the wallet signature step.',
+                        ]}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="border-[2px] border-black bg-[#FEFAE0] p-5">
+                    <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Implementation Notes</p>
+                    <div className="mt-4">
+                      <BulletList
+                        items={[
+                          'The action hook groups rows by token and chains multiple .transfer(...) steps into one wallet.tx() builder.',
+                          'The batching page shows token subtotals so users can understand how the mixed-asset batch resolves before signing.',
+                          'Submitted batch transactions are written into the shared wallet logs flow alongside swap, DCA, and lending actions.',
+                        ]}
+                      />
+                    </div>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <RoutePill to="/batching" label="Open Batching" />
+                      <FilePill path="src/pages/BatchingPage.tsx" />
+                      <FilePill path="src/hooks/useStarkZapActions.ts" />
+                      <FilePill path="src/lib/starkzapLogs.ts" />
                     </div>
                   </div>
                 </div>

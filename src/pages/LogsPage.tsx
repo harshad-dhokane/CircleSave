@@ -26,6 +26,8 @@ const CATEGORY_META = {
   circle: { color: '#4ECDC4', icon: Users, label: 'Circle' },
   reputation: { color: '#FFE66D', icon: Trophy, label: 'Reputation' },
   collateral: { color: '#96CEB4', icon: Shield, label: 'Collateral' },
+  batch: { color: '#F4A261', icon: Blocks, label: 'Batch' },
+  staking: { color: '#45B7D1', icon: Blocks, label: 'Staking' },
   swap: { color: '#DDA0DD', icon: ArrowRightLeft, label: 'Swap' },
   dca: { color: '#FFE66D', icon: Repeat, label: 'DCA' },
   lending: { color: '#96CEB4', icon: PiggyBank, label: 'Lending' },
@@ -105,6 +107,8 @@ function mapWalletLog(entry: StarkZapLogEntry): LogsFeedEntry {
   const valueText = getStarkZapLogAmountText(entry) || entry.summary;
   const valueDetail = entry.kind === 'swap' && details?.outputAmount && details?.outputToken
     ? `${details.outputAmount} ${details.outputToken} received`
+    : entry.kind === 'batch' && details?.transferCount
+      ? `${details.transferCount} transfers across ${details.batchTransfers?.length || 1} token group${(details.batchTransfers?.length || 1) === 1 ? '' : 's'}`
     : entry.kind === 'dca' && details?.outputToken
       ? `Buying ${details.outputToken}`
       : null;
@@ -179,6 +183,7 @@ export function LogsPage() {
     total: feedEntries.length,
     circle: feedEntries.filter((entry) => entry.category === 'factory' || entry.category === 'circle').length,
     reputation: feedEntries.filter((entry) => entry.category === 'reputation').length,
+    batch: feedEntries.filter((entry) => entry.category === 'batch').length,
     swap: feedEntries.filter((entry) => entry.category === 'swap').length,
     dca: feedEntries.filter((entry) => entry.category === 'dca').length,
     lending: feedEntries.filter((entry) => entry.category === 'lending').length,
@@ -187,6 +192,7 @@ export function LogsPage() {
   const totals = useMemo(() => {
     const circleContributions = new Map<string, number>();
     const collateralLocked = new Map<string, number>();
+    const batchVolume = new Map<string, number>();
     const swapVolume = new Map<string, number>();
     const dcaBudget = new Map<string, number>();
     const lendingVolume = new Map<string, number>();
@@ -208,6 +214,16 @@ export function LogsPage() {
         addTokenAmount(swapVolume, details?.inputAmount && details?.inputToken ? `${details.inputAmount} ${details.inputToken}` : null);
       }
 
+      if (entry.kind === 'batch') {
+        if (details?.batchTransfers && details.batchTransfers.length > 0) {
+          details.batchTransfers.forEach((item) => {
+            addTokenAmount(batchVolume, `${item.totalAmount} ${item.token}`);
+          });
+        } else {
+          addTokenAmount(batchVolume, details?.totalAmount && details?.totalToken ? `${details.totalAmount} ${details.totalToken}` : null);
+        }
+      }
+
       if (entry.kind === 'dca') {
         addTokenAmount(dcaBudget, details?.totalAmount && details?.totalToken ? `${details.totalAmount} ${details.totalToken}` : null);
       }
@@ -220,6 +236,7 @@ export function LogsPage() {
     return {
       circleContributions: formatTokenTotals(circleContributions),
       collateralLocked: formatTokenTotals(collateralLocked),
+      batchVolume: formatTokenTotals(batchVolume),
       swapVolume: formatTokenTotals(swapVolume),
       dcaBudget: formatTokenTotals(dcaBudget),
       lendingVolume: formatTokenTotals(lendingVolume),
@@ -243,7 +260,7 @@ export function LogsPage() {
               </div>
               <h1 className="mb-2 text-4xl font-black md:text-5xl">Logs</h1>
               <p className="max-w-4xl text-[15px] leading-relaxed text-black/70 md:text-base">
-                One place for badge, circle, collateral, swap, DCA, lending, borrow, repay, and withdraw activity.
+                One place for badge, circle, collateral, batching, swap, DCA, lending, borrow, repay, and withdraw activity.
                 CircleSave contract events are public, and StarkZap wallet actions saved in this browser are merged into the same feed.
               </p>
             </div>
@@ -264,11 +281,12 @@ export function LogsPage() {
       </div>
 
       <div className="page-shell space-y-6 py-8 md:py-10">
-        <section className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
+        <section className="grid gap-4 md:grid-cols-3 xl:grid-cols-7">
           {[
             { label: 'Total Records', value: counts.total, color: '#DDA0DD' },
             { label: 'Circle Events', value: counts.circle, color: '#4ECDC4' },
             { label: 'Reputation', value: counts.reputation, color: '#FFE66D' },
+            { label: 'Batch Actions', value: counts.batch, color: '#F4A261' },
             { label: 'Swap Actions', value: counts.swap, color: '#DDA0DD' },
             { label: 'DCA Orders', value: counts.dca, color: '#FFE66D' },
             { label: 'Lending Actions', value: counts.lending, color: '#96CEB4' },
@@ -281,10 +299,11 @@ export function LogsPage() {
           ))}
         </section>
 
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
           {[
             { label: 'Circle Contributions', value: totals.circleContributions, color: '#4ECDC4' },
             { label: 'Collateral Locked', value: totals.collateralLocked, color: '#96CEB4' },
+            { label: 'Batch Volume', value: totals.batchVolume, color: '#F4A261' },
             { label: 'Swap Volume', value: totals.swapVolume, color: '#DDA0DD' },
             { label: 'DCA Budgeted', value: totals.dcaBudget, color: '#FFE66D' },
             { label: 'Lending Volume', value: totals.lendingVolume, color: '#96CEB4' },
@@ -317,7 +336,7 @@ export function LogsPage() {
             </div>
             <h2 className="mb-3 text-3xl font-black">No Activity Sources Yet</h2>
             <p className="mx-auto max-w-2xl text-[15px] leading-relaxed text-black/70">
-              Add the deployed CircleSave contract addresses or submit swap, DCA, and lending actions from this browser to start populating the unified logs feed.
+              Add the deployed CircleSave contract addresses or submit batch, swap, DCA, and lending actions from this browser to start populating the unified logs feed.
             </p>
           </div>
         ) : null}
@@ -415,7 +434,7 @@ export function LogsPage() {
             </div>
             <h2 className="mb-3 text-3xl font-black">No Activity Yet</h2>
             <p className="mx-auto max-w-2xl text-[15px] leading-relaxed text-black/70">
-              Once badge, circle, swap, DCA, lending, or collateral actions are available, they will appear here in one unified feed.
+              Once badge, circle, batch, swap, DCA, lending, or collateral actions are available, they will appear here in one unified feed.
             </p>
           </div>
         ) : null}

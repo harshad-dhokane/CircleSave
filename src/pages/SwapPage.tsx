@@ -327,59 +327,6 @@ export function SwapPage() {
           </div>
 
           <div className="neo-panel p-6">
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <div>
-                <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Provider Comparison</p>
-                <h2 className="text-2xl font-black">AVNU vs Ekubo</h2>
-              </div>
-              {selectedComparison && <div className="neo-chip bg-[#4ECDC4]">Route Ready</div>}
-            </div>
-            {comparisons.length > 0 ? (
-              <div className="grid gap-4 md:grid-cols-2">
-                {comparisons.map((comparison) => {
-                  const isSelected = providerId === 'best'
-                    ? comparison.recommended
-                    : comparison.providerId === providerId;
-
-                  return (
-                    <div
-                      key={comparison.providerId}
-                      className={`border-[2px] border-black p-5 ${isSelected ? 'bg-white' : 'bg-[#FEFAE0]'}`}
-                    >
-                      <div className="mb-3 flex items-center justify-between gap-3">
-                        <p className="text-xl font-black">{comparison.provider}</p>
-                        <div className="flex gap-2">
-                          {comparison.recommended && (
-                            <span className="border-[2px] border-black bg-[#FFE66D] px-2 py-1 text-xs font-black uppercase tracking-[0.08em]">
-                              Best Output
-                            </span>
-                          )}
-                          {isSelected && (
-                            <span className="border-[2px] border-black bg-[#4ECDC4] px-2 py-1 text-xs font-black uppercase tracking-[0.08em]">
-                              Selected
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Estimated Output</p>
-                      <p className="mt-2 text-3xl font-black">{comparison.amountOut}</p>
-                      <div className="mt-4 space-y-2 text-[15px]">
-                        <p><span className="font-black">Input:</span> {comparison.amountIn}</p>
-                        <p><span className="font-black">Calls:</span> {comparison.callCount}</p>
-                        <p><span className="font-black">Price Impact:</span> {comparison.priceImpact || 'Unavailable'}</p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="border-[2px] border-black bg-[#FEFAE0] p-5 text-[15px] leading-relaxed text-black/70">
-                Compare routes to see which venue gives the best output and whether a forced AVNU or Ekubo route changes call count or price impact.
-              </div>
-            )}
-          </div>
-
-          <div className="neo-panel p-6">
             <div className="mb-4 flex items-center gap-3">
               <div className="flex h-11 w-11 items-center justify-center border-[2px] border-black bg-[#FFE66D]">
                 <CheckCircle2 className="h-5 w-5" />
@@ -441,19 +388,49 @@ export function SwapPage() {
 
           <div className="neo-panel p-6">
             <div className="mb-4 flex items-center justify-between gap-3">
-              <h2 className="text-2xl font-black">Selected Quote</h2>
-              {selectedComparison && <div className="neo-chip bg-[#4ECDC4]">Ready</div>}
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Provider Comparison</p>
+                <h2 className="text-2xl font-black">AVNU vs Ekubo</h2>
+              </div>
+              {selectedComparison && <div className="neo-chip bg-[#4ECDC4]">Route Ready</div>}
             </div>
-            {selectedComparison ? (
-              <div className="space-y-3 text-[15px]">
-                <div className="border-[2px] border-black bg-[#FEFAE0] p-4">
-                  <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Estimated Output</p>
-                  <p className="mt-2 text-3xl font-black">{selectedComparison.amountOut}</p>
-                </div>
-                <p><span className="font-black">Provider:</span> {selectedComparison.provider}</p>
-                <p><span className="font-black">Input:</span> {selectedComparison.amountIn}</p>
-                <p><span className="font-black">Calls:</span> {selectedComparison.callCount}</p>
-                <p><span className="font-black">Price Impact:</span> {selectedComparison.priceImpact || 'Unavailable'}</p>
+            {comparisons.length > 0 ? (
+              <div className="space-y-3">
+                {comparisons.map((comparison) => {
+                  const isSelected = providerId === 'best'
+                    ? comparison.recommended
+                    : comparison.providerId === providerId;
+
+                  return (
+                    <div
+                      key={comparison.providerId}
+                      className={`border-[2px] border-black p-4 ${isSelected ? 'bg-white' : 'bg-[#FEFAE0]'}`}
+                    >
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <p className="text-lg font-black">{comparison.provider}</p>
+                        <div className="flex gap-2">
+                          {comparison.recommended && (
+                            <span className="border-[2px] border-black bg-[#FFE66D] px-2 py-1 text-[11px] font-black uppercase tracking-[0.08em]">
+                              Best
+                            </span>
+                          )}
+                          {isSelected && (
+                            <span className="border-[2px] border-black bg-[#4ECDC4] px-2 py-1 text-[11px] font-black uppercase tracking-[0.08em]">
+                              Selected
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Estimated Output</p>
+                      <p className="mt-2 text-2xl font-black">{comparison.amountOut}</p>
+                      <div className="mt-3 space-y-1.5 text-sm text-black/75">
+                        <p><span className="font-black">Input:</span> {comparison.amountIn}</p>
+                        <p><span className="font-black">Calls:</span> {comparison.callCount}</p>
+                        <p><span className="font-black">Price Impact:</span> {comparison.priceImpact || 'Unavailable'}</p>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               <p className="text-[15px] leading-relaxed text-black/70">

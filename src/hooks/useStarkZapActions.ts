@@ -28,6 +28,11 @@ export type StarkZapDcaProviderId = 'avnu' | 'ekubo';
 export type StarkZapExecutionMode = 'user_pays' | 'sponsored';
 export type StarkZapLendingStrategy = 'deposit' | 'withdraw' | 'withdraw_max' | 'borrow' | 'repay';
 export type StarkZapCircleStrategy = 'join' | 'contribute';
+export interface StarkZapBatchTransferItem {
+  address: string;
+  amount: string;
+  token: StarkZapTokenKey;
+}
 
 export interface StarkZapSwapPreview {
   provider: string;
@@ -99,6 +104,22 @@ export interface StarkZapTxView {
   explorerUrl: string;
 }
 
+export interface StarkZapBatchTransferBreakdown {
+  token: StarkZapTokenKey;
+  totalAmount: string;
+  totalAmountLabel: string;
+  transferCount: number;
+}
+
+export interface StarkZapBatchTransferPreview {
+  transferCount: number;
+  tokenCount: number;
+  callCount: number;
+  breakdown: StarkZapBatchTransferBreakdown[];
+  summary: string;
+  items: StarkZapBatchTransferItem[];
+}
+
 export interface StarkZapStakingPositionView {
   staked: string;
   rewards: string;
@@ -160,7 +181,7 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: str
   }
 }
 
-function toFriendlyActionError(kind: 'swap' | 'dca' | 'lending' | 'staking', error: unknown) {
+function toFriendlyActionError(kind: 'swap' | 'dca' | 'lending' | 'staking' | 'batch', error: unknown) {
   const message = getErrorMessage(error).trim();
   const lower = message.toLowerCase();
 
@@ -325,7 +346,7 @@ export function useStarkZapActions() {
   const trackTransaction = useCallback(async (params: {
     title: string;
     summary: string;
-    kind: 'swap' | 'dca' | 'lending' | 'staking';
+    kind: 'swap' | 'dca' | 'lending' | 'staking' | 'batch';
     providerId: string;
     transactionHash: string;
     details?: StarkZapLogDetails;
@@ -368,7 +389,7 @@ export function useStarkZapActions() {
   }, [address, provider]);
 
   const runAction = useCallback(async <T,>(
-    kind: 'swap' | 'dca' | 'lending' | 'staking',
+    kind: 'swap' | 'dca' | 'lending' | 'staking' | 'batch',
     action: () => Promise<T>,
   ): Promise<T> => {
     try {
@@ -382,6 +403,181 @@ export function useStarkZapActions() {
       throw new Error(friendly);
     }
   }, []);
+
+  const normalizeBatchTransferItems = useCallback((
+    items: StarkZapBatchTransferItem[],
+  ) => {
+    const normalizedItems = items.map((item, index) => {
+      const address = item.address.trim();
+      const amountValue = item.amount.trim();
+
+      if (!address) {
+        throw new Error(`Enter transfer ${index + 1} address.`);
+      }
+
+      if (!amountValue) {
+        throw new Error(`Enter transfer ${index + 1} amount.`);
+      }
+
+      const token = sepoliaTokens[item.token];
+      const amount = Amount.parse(amountValue, token);
+      if (!amount.isPositive()) {
+        throw new Error(`Transfer ${index + 1} amount must be greater than zero.`);
+      }
+
+      return {
+        address,
+        tokenKey: item.token,
+        token,
+        to: fromAddress(address),
+        amount,
+      };
+    });
+
+    if (normalizedItems.length < 2) {
+      throw new Error('Add at least two transfers to demonstrate batching.');
+    }
+
+    const groupedTransfers = new Map<StarkZapTokenKey, {
+      token: typeof sepoliaTokens[StarkZapTokenKey];
+      transfers: Array<{
+        address: string;
+        to: ReturnType<typeof fromAddress>;
+        amount: Amount;
+      }>;
+      totalAmount: Amount;
+    }>();
+
+    normalizedItems.forEach((item) => {
+      const existingGroup = groupedTransfers.get(item.tokenKey);
+
+      if (existingGroup) {
+        existingGroup.transfers.push({
+          address: item.address,
+          to: item.to,
+          amount: item.amount,
+        });
+        existingGroup.totalAmount = existingGroup.totalAmount.add(item.amount);
+        return;
+      }
+
+      groupedTransfers.set(item.tokenKey, {
+        token: item.token,
+        transfers: [{
+          address: item.address,
+          to: item.to,
+          amount: item.amount,
+        }],
+        totalAmount: Amount.fromRaw(item.amount.toBase(), item.token),
+      });
+    });
+
+    const breakdown = [...groupedTransfers.entries()].map(([tokenKey, group]) => ({
+      token: tokenKey,
+      totalAmount: group.totalAmount.toUnit(),
+      totalAmountLabel: group.totalAmount.toFormatted(true),
+      transferCount: group.transfers.length,
+    })) satisfies StarkZapBatchTransferBreakdown[];
+
+    return {
+      normalizedItems,
+      groupedTransfers,
+      breakdown,
+    };
+  }, []);
+
+  const previewBatchTransfer = useCallback(async (params: {
+    items: StarkZapBatchTransferItem[];
+    feeMode?: StarkZapExecutionMode;
+  }): Promise<StarkZapBatchTransferPreview> => {
+    return runAction('batch', async () => {
+      const executionMode = normalizeExecutionMode(params.feeMode);
+      const wallet = getWallet(executionMode);
+      const { normalizedItems, groupedTransfers, breakdown } = normalizeBatchTransferItems(params.items);
+      const builder = wallet.tx();
+
+      groupedTransfers.forEach((group) => {
+        builder.transfer(
+          group.token,
+          group.transfers.map((transfer) => ({
+            to: transfer.to,
+            amount: transfer.amount,
+          })),
+        );
+      });
+
+      const calls = await builder.calls();
+      const simulation = await builder.preflight();
+
+      if (!simulation.ok) {
+        throw new Error(simulation.reason);
+      }
+
+      const summary = breakdown
+        .map((group) => `${group.transferCount} ${group.token} transfer${group.transferCount === 1 ? '' : 's'} totaling ${group.totalAmountLabel}`)
+        .join(' • ');
+
+      return {
+        transferCount: normalizedItems.length,
+        tokenCount: breakdown.length,
+        callCount: calls.length,
+        breakdown,
+        summary,
+        items: normalizedItems.map((item) => ({
+          address: item.address,
+          amount: item.amount.toUnit(),
+          token: item.tokenKey,
+        })),
+      };
+    });
+  }, [getWallet, normalizeBatchTransferItems, normalizeExecutionMode, runAction]);
+
+  const executeBatchTransfer = useCallback(async (params: {
+    items: StarkZapBatchTransferItem[];
+    feeMode?: StarkZapExecutionMode;
+  }): Promise<StarkZapTxView> => {
+    return runAction('batch', async () => {
+      const executionMode = normalizeExecutionMode(params.feeMode);
+      const wallet = getWallet(executionMode);
+      const { normalizedItems, groupedTransfers, breakdown } = normalizeBatchTransferItems(params.items);
+      const builder = wallet.tx();
+
+      groupedTransfers.forEach((group) => {
+        builder.transfer(
+          group.token,
+          group.transfers.map((transfer) => ({
+            to: transfer.to,
+            amount: transfer.amount,
+          })),
+        );
+      });
+
+      const simulation = await builder.preflight();
+
+      if (!simulation.ok) {
+        throw new Error(simulation.reason);
+      }
+
+      const tx = await builder.send(toExecutionOptions(executionMode));
+      toast.success('Batch transaction submitted');
+
+      return trackTransaction({
+        title: 'TxBuilder Batch Transaction',
+        summary: `${normalizedItems.length} transfers across ${breakdown.length} token${breakdown.length === 1 ? '' : 's'} batched into one transaction`,
+        kind: 'batch',
+        providerId: 'txbuilder',
+        transactionHash: tx.hash,
+        details: {
+          transferCount: normalizedItems.length,
+          batchTransfers: breakdown.map((group) => ({
+            token: group.token,
+            totalAmount: group.totalAmount,
+            transferCount: group.transferCount,
+          })),
+        },
+      });
+    });
+  }, [getWallet, normalizeBatchTransferItems, normalizeExecutionMode, runAction, trackTransaction]);
 
   const buildSwapComparisons = useCallback(async (params: {
     tokenIn: StarkZapTokenKey;
@@ -1373,6 +1569,8 @@ export function useStarkZapActions() {
     previewSwap,
     compareSwapProviders,
     executeSwap,
+    previewBatchTransfer,
+    executeBatchTransfer,
     previewDca,
     createDca,
     loadDcaOrders,

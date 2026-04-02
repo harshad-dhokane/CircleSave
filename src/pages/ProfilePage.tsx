@@ -54,6 +54,8 @@ const LOG_KIND_META = {
   circle: { label: 'Circle', color: '#FF6B6B', icon: Users },
   reputation: { label: 'Reputation', color: '#FFE66D', icon: Trophy },
   collateral: { label: 'Collateral', color: '#96CEB4', icon: Shield },
+  batch: { label: 'Batch', color: '#F4A261', icon: Blocks },
+  staking: { label: 'Staking', color: '#45B7D1', icon: Blocks },
   swap: { label: 'Swap', color: '#DDA0DD', icon: ArrowRightLeft },
   dca: { label: 'DCA', color: '#FFE66D', icon: Repeat },
   lending: { label: 'Lending', color: '#96CEB4', icon: PiggyBank },
@@ -209,6 +211,7 @@ export function ProfilePage() {
   const activityFactoryCount = myActivityEntries.filter((entry) => entry.category === 'factory').length;
   const activityCircleCount = myActivityEntries.filter((entry) => entry.category === 'circle').length;
   const totalCircleActivityCount = activityFactoryCount + activityCircleCount;
+  const batchActionCount = walletActionLogs.filter((entry) => entry.kind === 'batch').length;
   const swapActionCount = walletActionLogs.filter((entry) => entry.kind === 'swap').length;
   const dcaActionCount = walletActionLogs.filter((entry) => entry.kind === 'dca').length;
   const lendingActionCount = walletActionLogs.filter((entry) => entry.kind === 'lending').length;
@@ -336,6 +339,10 @@ export function ProfilePage() {
                 <Link to="/swap" className="neo-button-secondary justify-start">
                   <ArrowRightLeft className="h-4 w-4" />
                   Open Swap
+                </Link>
+                <Link to="/batching" className="neo-button-secondary justify-start">
+                  <Blocks className="h-4 w-4" />
+                  Open Batching
                 </Link>
                 <Link to="/dca" className="neo-button-secondary justify-start">
                   <Repeat className="h-4 w-4" />
@@ -589,7 +596,7 @@ export function ProfilePage() {
                       </div>
                       <h2 className="mb-2 text-3xl font-black md:text-4xl">Activity</h2>
                       <p className="max-w-3xl text-[15px] leading-relaxed text-black/70">
-                        Review your StarkZap swap, DCA, and lending actions together with CircleSave contract events tied to this wallet and the circles it belongs to.
+                        Review your StarkZap batching, swap, DCA, and lending actions together with CircleSave contract events tied to this wallet and the circles it belongs to.
                       </p>
                     </div>
 
@@ -601,9 +608,10 @@ export function ProfilePage() {
                 </div>
               </section>
 
-              <section className="grid gap-4 md:grid-cols-4">
+              <section className="grid gap-4 md:grid-cols-5">
                 {[
                   { label: 'Total Entries', value: combinedActivityEntryCount, color: '#DDA0DD' },
+                  { label: 'Batch Actions', value: batchActionCount, color: '#F4A261' },
                   { label: 'Swap Actions', value: swapActionCount, color: '#DDA0DD' },
                   { label: 'DCA Orders', value: dcaActionCount, color: '#FFE66D' },
                   { label: 'Lending Actions', value: lendingActionCount, color: '#96CEB4' },
@@ -706,7 +714,7 @@ export function ProfilePage() {
                   <p className="mx-auto max-w-2xl text-[15px] leading-relaxed text-black/70">
                     {activityLoading
                       ? 'Fetching wallet actions and contract events tied to this account.'
-                      : 'Use swap, DCA, lending, or circle flows and your wallet activity will appear here.'}
+                      : 'Use batching, swap, DCA, lending, or circle flows and your wallet activity will appear here.'}
                   </p>
                 </div>
               )}

@@ -1,6 +1,6 @@
 import { getVoyagerTxUrl } from '@/lib/constants';
 
-export type StarkZapLogKind = 'swap' | 'dca' | 'lending' | 'staking';
+export type StarkZapLogKind = 'swap' | 'dca' | 'lending' | 'staking' | 'batch';
 export type StarkZapLogStatus = 'submitted' | 'confirmed' | 'failed';
 
 export interface StarkZapLogDetails {
@@ -14,6 +14,12 @@ export interface StarkZapLogDetails {
   cycleAmount?: string;
   cycleToken?: string;
   frequency?: string;
+  transferCount?: number;
+  batchTransfers?: Array<{
+    token: string;
+    totalAmount: string;
+    transferCount: number;
+  }>;
 }
 
 export interface StarkZapLogEntry {
@@ -217,6 +223,19 @@ export function getStarkZapLogAmountText(entry: StarkZapLogEntry): string | null
       ? ` • ${details.cycleAmount} ${details.cycleToken}/cycle`
       : '';
     return `${details.totalAmount} ${details.totalToken} total${cycleText}`;
+  }
+
+  if (entry.kind === 'batch' && details.totalAmount && details.totalToken) {
+    const prefix = details.transferCount ? `${details.transferCount} transfers • ` : '';
+    return `${prefix}${details.totalAmount} ${details.totalToken} total`;
+  }
+
+  if (entry.kind === 'batch' && details.batchTransfers && details.batchTransfers.length > 0) {
+    const prefix = details.transferCount ? `${details.transferCount} transfers • ` : '';
+    const totals = details.batchTransfers
+      .map((item) => `${item.totalAmount} ${item.token}`)
+      .join(' • ');
+    return `${prefix}${totals}`;
   }
 
   if (entry.kind === 'lending' && details.inputAmount && details.inputToken) {

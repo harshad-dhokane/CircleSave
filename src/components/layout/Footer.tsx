@@ -12,6 +12,7 @@ const footerLinks = {
     { label: 'Discover Circles', href: '/circles' },
     { label: 'Create Circle', href: '/circles/create' },
     { label: 'Swap', href: '/swap' },
+    { label: 'Batching', href: '/batching' },
     { label: 'DCA', href: '/dca' },
     { label: 'Dashboard', href: '/dashboard' },
     { label: 'Leaderboard', href: '/leaderboard' },

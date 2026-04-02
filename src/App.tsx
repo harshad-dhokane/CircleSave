@@ -11,6 +11,7 @@ import { CreateCirclePage } from '@/pages/CreateCirclePage';
 import { ProfilePage } from '@/pages/ProfilePage';
 import { SdkPage } from '@/pages/SdkPage';
 import { SwapPage } from '@/pages/SwapPage';
+import { BatchingPage } from '@/pages/BatchingPage';
 import { DcaPage } from '@/pages/DcaPage';
 import { LendingPage } from '@/pages/LendingPage';
 // Staking page disabled — no active Sepolia delegation pools exist.
@@ -69,6 +70,7 @@ function App() {
                 <Route path="/sdk" element={<SdkPage />} />
                 <Route path="/help" element={<Navigate to="/sdk" replace />} />
                 <Route path="/swap" element={<SwapPage />} />
+                <Route path="/batching" element={<BatchingPage />} />
                 <Route path="/dca" element={<DcaPage />} />
                 <Route path="/lending" element={<LendingPage />} />
                 {/* <Route path="/staking" element={<StakingPage />} /> — disabled: no live Sepolia pool */}
