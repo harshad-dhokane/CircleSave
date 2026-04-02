@@ -13,6 +13,9 @@ import { SdkPage } from '@/pages/SdkPage';
 import { SwapPage } from '@/pages/SwapPage';
 import { DcaPage } from '@/pages/DcaPage';
 import { LendingPage } from '@/pages/LendingPage';
+// Staking page disabled — no active Sepolia delegation pools exist.
+// The SDK integration code remains in src/pages/StakingPage.tsx for review.
+// import { StakingPage } from '@/pages/StakingPage';
 import { LogsPage } from '@/pages/LogsPage';
 import { primeOnchainActivityFeedCache } from '@/hooks/useOnchainActivityFeed';
 import {
@@ -68,6 +71,7 @@ function App() {
                 <Route path="/swap" element={<SwapPage />} />
                 <Route path="/dca" element={<DcaPage />} />
                 <Route path="/lending" element={<LendingPage />} />
+                {/* <Route path="/staking" element={<StakingPage />} /> — disabled: no live Sepolia pool */}
                 <Route path="/logs" element={<LogsPage />} />
                 <Route path="/leaderboard" element={<LeaderboardPage />} />
                 <Route path="/how-it-works" element={<HowItWorksPage />} />

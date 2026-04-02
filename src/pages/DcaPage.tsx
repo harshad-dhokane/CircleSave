@@ -59,7 +59,6 @@ export function DcaPage() {
     isWalletReady,
     loadDcaOrders,
     previewDca,
-    recommendedExecutionMode,
   } = useStarkZapActions();
   const [sellToken, setSellToken] = useState<StarkZapTokenKey>('STRK');
   const [buyToken, setBuyToken] = useState<StarkZapTokenKey>('ETH');
@@ -68,7 +67,6 @@ export function DcaPage() {
   const [frequency, setFrequency] = useState<StarkZapDcaFrequency>('P1D');
   const [providerId, setProviderId] = useState<StarkZapDcaProviderId>('avnu');
   const [orderFilter, setOrderFilter] = useState<'all' | StarkZapDcaProviderId>('all');
-  const [feeMode, setFeeMode] = useState<StarkZapExecutionMode>(recommendedExecutionMode);
   const [preview, setPreview] = useState<StarkZapDcaPreview | null>(null);
   const [orders, setOrders] = useState<StarkZapOrderView[]>([]);
   const [lastTx, setLastTx] = useState<{ hash: string; explorerUrl: string } | null>(null);
@@ -77,6 +75,7 @@ export function DcaPage() {
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const accountInitializing = isConnected && !isWalletReady;
+  const feeMode: StarkZapExecutionMode = 'user_pays';
 
   const totalCycles = useMemo(() => {
     const total = Number.parseFloat(sellAmount);
@@ -84,10 +83,6 @@ export function DcaPage() {
     if (!Number.isFinite(total) || !Number.isFinite(perCycle) || perCycle <= 0) return 0;
     return Math.ceil(total / perCycle);
   }, [sellAmount, sellAmountPerCycle]);
-
-  useEffect(() => {
-    setFeeMode(recommendedExecutionMode);
-  }, [recommendedExecutionMode]);
 
   const refreshOrders = async (nextFilter: 'all' | StarkZapDcaProviderId = orderFilter) => {
     try {
@@ -102,8 +97,20 @@ export function DcaPage() {
 
   useEffect(() => {
     if (!isWalletReady) return;
-    void refreshOrders(orderFilter);
-  }, [isWalletReady, orderFilter]);
+    let cancelled = false;
+    (async () => {
+      try {
+        setLoadingOrders(true);
+        const result = await loadDcaOrders({ providerId: orderFilter });
+        if (!cancelled) setOrders(result);
+      } catch {
+        // The hook already surfaces a toast and we preserve the current list.
+      } finally {
+        if (!cancelled) setLoadingOrders(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isWalletReady, orderFilter, loadDcaOrders]);
 
   const handlePreview = async () => {
     try {

@@ -26,6 +26,7 @@ import {
   checkDeployed,
   preflightTransaction,
 } from '../../node_modules/starkzap/dist/src/wallet/utils.js';
+import { getStakingPreset } from '../../node_modules/starkzap/dist/src/staking/presets.js';
 
 type ConnectedStarkZapWalletOptions = {
   account: AccountInterface;
@@ -61,6 +62,13 @@ export class ConnectedStarkZapWallet extends BaseWallet {
     this.rpcProvider = options.provider;
     this.chainIdValue = options.chainId;
     this.defaultFeeModeValue = options.defaultFeeMode ?? 'user_pays';
+
+    // Set staking config AFTER super() so chainId is available
+    try {
+      (this as any).stakingConfig = getStakingPreset(options.chainId);
+    } catch {
+      // gracefully skip if preset not available
+    }
 
     this.registerSwapProvider(new EkuboSwapProvider());
     this.dca().registerProvider(new EkuboDcaProvider());

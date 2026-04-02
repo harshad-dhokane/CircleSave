@@ -530,6 +530,14 @@
     background-color: #1d2440 !important;
   }
 
+  html.dark [class~="bg-[#F0F4C3]"] {
+    background-color: #1e2b3d !important;
+  }
+
+  html.dark [class~="bg-[#FFCCBC]"] {
+    background-color: #2b1e28 !important;
+  }
+
   html.dark :is(
     [class~="bg-white/10"],
     [class~="bg-white/20"]

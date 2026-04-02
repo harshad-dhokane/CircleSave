@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ArrowRightLeft, PiggyBank, Repeat, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -55,7 +55,6 @@ export function CircleFundingStudio(props: CircleFundingStudioProps) {
     fundCircleWithSwap,
     getMaxBorrowQuote,
     quoteLendingHealth,
-    recommendedExecutionMode,
     swapProviderOptions,
   } = useStarkZapActions();
 
@@ -64,7 +63,6 @@ export function CircleFundingStudio(props: CircleFundingStudioProps) {
   const [swapSourceToken, setSwapSourceToken] = useState<Exclude<StarkZapTokenKey, 'STRK'>>('USDC');
   const [swapAmount, setSwapAmount] = useState(requiredAmountLabel);
   const [swapProviderId, setSwapProviderId] = useState<StarkZapSwapProviderId>('best');
-  const [swapFeeMode, setSwapFeeMode] = useState<StarkZapExecutionMode>(recommendedExecutionMode);
   const [swapComparisons, setSwapComparisons] = useState<StarkZapSwapComparison[]>([]);
   const [swapError, setSwapError] = useState<string | null>(null);
   const [swapBusy, setSwapBusy] = useState<'preview' | 'submit' | null>(null);
@@ -74,7 +72,6 @@ export function CircleFundingStudio(props: CircleFundingStudioProps) {
   const [dcaPerCycle, setDcaPerCycle] = useState(requiredAmountLabel);
   const [dcaFrequency, setDcaFrequency] = useState<StarkZapDcaFrequency>('P1W');
   const [dcaProviderId, setDcaProviderId] = useState<StarkZapDcaProviderId>('avnu');
-  const [dcaFeeMode, setDcaFeeMode] = useState<StarkZapExecutionMode>(recommendedExecutionMode);
   const [dcaBusy, setDcaBusy] = useState(false);
   const [dcaError, setDcaError] = useState<string | null>(null);
 
@@ -83,11 +80,11 @@ export function CircleFundingStudio(props: CircleFundingStudioProps) {
   const [lendingAmount, setLendingAmount] = useState(requiredAmountLabel);
   const [lendingCollateralToken, setLendingCollateralToken] = useState<Exclude<StarkZapTokenKey, 'STRK'>>('ETH');
   const [lendingSwapProviderId, setLendingSwapProviderId] = useState<StarkZapSwapProviderId>('avnu');
-  const [lendingFeeMode, setLendingFeeMode] = useState<StarkZapExecutionMode>(recommendedExecutionMode);
   const [lendingMaxBorrow, setLendingMaxBorrow] = useState<string | null>(null);
   const [lendingHealth, setLendingHealth] = useState<StarkZapLendingHealthView | null>(null);
   const [lendingError, setLendingError] = useState<string | null>(null);
   const [lendingBusy, setLendingBusy] = useState<'max' | 'health' | 'submit' | null>(null);
+  const executionMode: StarkZapExecutionMode = 'user_pays';
 
   const targetAmount = Number.parseFloat(requiredAmountLabel || '0');
   const swapBestOutput = swapComparisons[0] ? parseFormattedAmount(swapComparisons[0].amountOut) : 0;
@@ -95,12 +92,6 @@ export function CircleFundingStudio(props: CircleFundingStudioProps) {
 
   const showBorrowControls = lendingAction === 'borrow';
   const showFixedAmount = lendingAction !== 'withdraw_max';
-
-  useEffect(() => {
-    setSwapFeeMode(recommendedExecutionMode);
-    setDcaFeeMode(recommendedExecutionMode);
-    setLendingFeeMode(recommendedExecutionMode);
-  }, [recommendedExecutionMode]);
 
   const handlePreviewSwap = async () => {
     try {
@@ -132,7 +123,7 @@ export function CircleFundingStudio(props: CircleFundingStudioProps) {
         sourceToken: swapSourceToken,
         sourceAmount: swapAmount,
         providerId: swapProviderId,
-        feeMode: swapFeeMode,
+        feeMode: executionMode,
       });
     } catch (error) {
       setSwapError(error instanceof Error ? error.message : 'Circle funding swap failed');
@@ -152,7 +143,7 @@ export function CircleFundingStudio(props: CircleFundingStudioProps) {
         sellAmountPerCycle: dcaPerCycle,
         frequency: dcaFrequency,
         providerId: dcaProviderId,
-        feeMode: dcaFeeMode,
+        feeMode: executionMode,
         summaryLabel: props.circleLabel,
       });
     } catch (error) {
@@ -191,7 +182,7 @@ export function CircleFundingStudio(props: CircleFundingStudioProps) {
         collateralToken: lendingCollateralToken,
         debtToken: lendingSourceToken,
         amount: lendingAmount,
-        feeMode: lendingFeeMode,
+        feeMode: executionMode,
       });
       setLendingHealth(nextHealth);
     } catch (error) {
@@ -215,7 +206,7 @@ export function CircleFundingStudio(props: CircleFundingStudioProps) {
         sourceAmount: showFixedAmount ? lendingAmount : undefined,
         collateralToken: showBorrowControls ? lendingCollateralToken : undefined,
         providerId: lendingSourceToken === 'STRK' ? undefined : lendingSwapProviderId,
-        feeMode: lendingFeeMode,
+        feeMode: executionMode,
         requiredStrkAmount: props.requiredStrkAmount,
       });
     } catch (error) {

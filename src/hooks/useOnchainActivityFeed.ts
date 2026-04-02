@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { CallData, RpcProvider, createAbiParser, events as starknetEvents, type Abi } from 'starknet';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { CallData, Contract, RpcProvider, createAbiParser, events as starknetEvents, type Abi } from 'starknet';
 import {
   BADGE_NAMES,
   CONTRACTS,
@@ -19,7 +19,9 @@ import {
 const RPC_URL = import.meta.env.VITE_STARKNET_RPC_URL || 'https://starknet-sepolia-rpc.publicnode.com';
 const rpc = new RpcProvider({ nodeUrl: RPC_URL });
 const REFRESH_INTERVAL_MS = 15_000;
-const ACTIVITY_FEED_CACHE_KEY = 'circlesave:onchain-activity-feed:v1';
+const INITIAL_LOOKBACK_BLOCKS = 150_000;
+const FACTORY_PAGE_SIZE = 25;
+const ACTIVITY_FEED_CACHE_KEY = 'circlesave:onchain-activity-feed:v2';
 
 type ActivityCategory = 'factory' | 'circle' | 'reputation' | 'collateral';
 type ActivityTone = 'success' | 'warning' | 'highlight' | 'neutral';
@@ -101,6 +103,7 @@ export interface OnchainActivityEntry {
 type CachedActivityFeed = {
   entries: OnchainActivityEntry[];
   lastUpdatedAt: number | null;
+  latestFetchedBlock: number | null;
 };
 
 const FACTORY_DECODER = createEventDecoder(CIRCLE_FACTORY_ABI as unknown as Abi);
@@ -228,22 +231,23 @@ function buildActivityEntry(input: ActivityEntryInput): OnchainActivityEntry {
 
 function readCachedActivityFeed(): CachedActivityFeed {
   if (typeof window === 'undefined') {
-    return { entries: [], lastUpdatedAt: null };
+    return { entries: [], lastUpdatedAt: null, latestFetchedBlock: null };
   }
 
   try {
     const raw = window.localStorage.getItem(ACTIVITY_FEED_CACHE_KEY);
     if (!raw) {
-      return { entries: [], lastUpdatedAt: null };
+      return { entries: [], lastUpdatedAt: null, latestFetchedBlock: null };
     }
 
     const parsed = JSON.parse(raw) as Partial<CachedActivityFeed>;
     return {
       entries: Array.isArray(parsed.entries) ? parsed.entries : [],
       lastUpdatedAt: typeof parsed.lastUpdatedAt === 'number' ? parsed.lastUpdatedAt : null,
+      latestFetchedBlock: typeof parsed.latestFetchedBlock === 'number' ? parsed.latestFetchedBlock : null,
     };
   } catch {
-    return { entries: [], lastUpdatedAt: null };
+    return { entries: [], lastUpdatedAt: null, latestFetchedBlock: null };
   }
 }
 
@@ -268,10 +272,11 @@ export async function primeOnchainActivityFeedCache() {
   }
 
   try {
-    const nextEntries = await loadOnchainActivityFeed();
+    const nextFeed = await loadOnchainActivityFeed();
     writeCachedActivityFeed({
-      entries: nextEntries,
+      entries: nextFeed.entries,
       lastUpdatedAt: Date.now(),
+      latestFetchedBlock: nextFeed.latestFetchedBlock,
     });
   } catch {
     return;
@@ -313,8 +318,76 @@ function decodeEvents(rawEvents: RawContractEvent[], decoder: EventDecoder) {
     .filter((event): event is DecodedEvent => Boolean(event?.transactionHash));
 }
 
-async function fetchContractEvents(address: string) {
+function sortActivityEntries(entries: OnchainActivityEntry[]) {
+  return [...entries].sort((left, right) => {
+    if (right.sortValue !== left.sortValue) {
+      return right.sortValue - left.sortValue;
+    }
+
+    return (right.occurredAt || 0) - (left.occurredAt || 0);
+  });
+}
+
+function mergeActivityEntries(previousEntries: OnchainActivityEntry[], nextEntries: OnchainActivityEntry[]) {
+  const merged = new Map<string, OnchainActivityEntry>();
+
+  previousEntries.forEach((entry) => {
+    merged.set(entry.id, entry);
+  });
+
+  nextEntries.forEach((entry) => {
+    merged.set(entry.id, entry);
+  });
+
+  return sortActivityEntries([...merged.values()]);
+}
+
+async function getLatestBlockNumber() {
+  const latestBlock = await rpc.getBlock('latest');
+  return latestBlock.block_number;
+}
+
+async function fetchFactoryCircleMeta() {
+  if (!isConfiguredAddress(CONTRACTS.CIRCLE_FACTORY)) {
+    return new Map<string, CircleMeta>();
+  }
+
+  const factory = new Contract({
+    abi: CIRCLE_FACTORY_ABI,
+    address: CONTRACTS.CIRCLE_FACTORY,
+    providerOrAccount: rpc,
+  });
+  const circleCount = Number(toBigIntValue(await factory.get_circle_count()));
+  const circleMetaMap = new Map<string, CircleMeta>();
+
+  if (!Number.isFinite(circleCount) || circleCount <= 0) {
+    return circleMetaMap;
+  }
+
+  for (let offset = 0; offset < circleCount; offset += FACTORY_PAGE_SIZE) {
+    const limit = Math.min(FACTORY_PAGE_SIZE, circleCount - offset);
+    const page = await factory.get_circles(offset, limit);
+
+    for (const info of page as Array<Record<string, unknown>>) {
+      const id = toBigIntValue(info.id).toString();
+      const address = toHexAddress(info.contract_address);
+      circleMetaMap.set(address.toLowerCase(), {
+        id,
+        address,
+        name: readFeltLabel(info.name, `Circle #${id}`),
+      });
+    }
+  }
+
+  return circleMetaMap;
+}
+
+async function fetchContractEvents(address: string, fromBlock: number, toBlock: number) {
   if (!isConfiguredAddress(address)) {
+    return [] as RawContractEvent[];
+  }
+
+  if (fromBlock > toBlock) {
     return [] as RawContractEvent[];
   }
 
@@ -327,8 +400,8 @@ async function fetchContractEvents(address: string) {
       address: normalizedAddress,
       chunk_size: 100,
       continuation_token: continuationToken,
-      from_block: { block_number: 0 },
-      to_block: 'latest',
+      from_block: { block_number: fromBlock },
+      to_block: { block_number: toBlock },
     } as never);
 
     const chunk = response as { continuation_token?: string; events?: RawContractEvent[] };
@@ -677,14 +750,29 @@ function mapCollateralEvent(event: DecodedEvent) {
   }
 }
 
-async function loadOnchainActivityFeed() {
+async function loadOnchainActivityFeed(options?: {
+  existingEntries?: OnchainActivityEntry[];
+  fromBlock?: number;
+}) {
+  const existingEntries = options?.existingEntries || [];
   const entries: OnchainActivityEntry[] = [];
   const failures: string[] = [];
+  const latestFetchedBlock = await getLatestBlockNumber();
+  const fromBlock = Math.max(options?.fromBlock ?? latestFetchedBlock - INITIAL_LOOKBACK_BLOCKS, 0);
   const circleMetaMap = new Map<string, CircleMeta>();
 
   if (isConfiguredAddress(CONTRACTS.CIRCLE_FACTORY)) {
     try {
-      const factoryRawEvents = await fetchContractEvents(CONTRACTS.CIRCLE_FACTORY);
+      const factoryCircleMeta = await fetchFactoryCircleMeta();
+      factoryCircleMeta.forEach((value, key) => circleMetaMap.set(key, value));
+    } catch {
+      failures.push('factory');
+    }
+  }
+
+  if (isConfiguredAddress(CONTRACTS.CIRCLE_FACTORY)) {
+    try {
+      const factoryRawEvents = await fetchContractEvents(CONTRACTS.CIRCLE_FACTORY, fromBlock, latestFetchedBlock);
       const factoryEntries = mapFactoryEvents(decodeEvents(factoryRawEvents, FACTORY_DECODER));
       entries.push(...factoryEntries.entries);
       factoryEntries.circleMetaMap.forEach((value, key) => circleMetaMap.set(key, value));
@@ -697,7 +785,7 @@ async function loadOnchainActivityFeed() {
 
   for (const circleMeta of circleMetaMap.values()) {
     tasks.push((async () => {
-      const rawEvents = await fetchContractEvents(circleMeta.address);
+      const rawEvents = await fetchContractEvents(circleMeta.address, fromBlock, latestFetchedBlock);
       return decodeEvents(rawEvents, CIRCLE_DECODER)
         .map((event) => mapCircleEvent(event, circleMeta))
         .filter((entry): entry is OnchainActivityEntry => Boolean(entry));
@@ -706,7 +794,7 @@ async function loadOnchainActivityFeed() {
 
   if (isConfiguredAddress(CONTRACTS.REPUTATION)) {
     tasks.push((async () => {
-      const rawEvents = await fetchContractEvents(CONTRACTS.REPUTATION);
+      const rawEvents = await fetchContractEvents(CONTRACTS.REPUTATION, fromBlock, latestFetchedBlock);
       return decodeEvents(rawEvents, REPUTATION_DECODER)
         .map(mapReputationEvent)
         .filter((entry): entry is OnchainActivityEntry => Boolean(entry));
@@ -715,7 +803,7 @@ async function loadOnchainActivityFeed() {
 
   if (isConfiguredAddress(CONTRACTS.COLLATERAL_MANAGER)) {
     tasks.push((async () => {
-      const rawEvents = await fetchContractEvents(CONTRACTS.COLLATERAL_MANAGER);
+      const rawEvents = await fetchContractEvents(CONTRACTS.COLLATERAL_MANAGER, fromBlock, latestFetchedBlock);
       return decodeEvents(rawEvents, COLLATERAL_DECODER)
         .map(mapCollateralEvent)
         .filter((entry): entry is OnchainActivityEntry => Boolean(entry));
@@ -733,17 +821,16 @@ async function loadOnchainActivityFeed() {
     failures.push('contract');
   }
 
-  if (entries.length === 0 && failures.length > 0) {
+  const mergedEntries = mergeActivityEntries(existingEntries, entries);
+
+  if (mergedEntries.length === 0 && failures.length > 0) {
     throw new Error('Unable to read on-chain activity right now. Please try again in a moment.');
   }
 
-  return entries.sort((left, right) => {
-    if (right.sortValue !== left.sortValue) {
-      return right.sortValue - left.sortValue;
-    }
-
-    return (right.occurredAt || 0) - (left.occurredAt || 0);
-  });
+  return {
+    entries: mergedEntries,
+    latestFetchedBlock,
+  };
 }
 
 export function useOnchainActivityFeed() {
@@ -751,31 +838,49 @@ export function useOnchainActivityFeed() {
   const [isLoading, setIsLoading] = useState(() => readCachedActivityFeed().entries.length === 0);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(() => readCachedActivityFeed().lastUpdatedAt);
+  const [latestFetchedBlock, setLatestFetchedBlock] = useState<number | null>(() => readCachedActivityFeed().latestFetchedBlock);
+  const entriesRef = useRef(entries);
+  const latestFetchedBlockRef = useRef(latestFetchedBlock);
+
+  useEffect(() => {
+    entriesRef.current = entries;
+  }, [entries]);
+
+  useEffect(() => {
+    latestFetchedBlockRef.current = latestFetchedBlock;
+  }, [latestFetchedBlock]);
 
   const refresh = useCallback(async (background = false) => {
-    if (!background && entries.length === 0) {
+    if (!background && entriesRef.current.length === 0) {
       setIsLoading(true);
     }
 
     try {
-      const nextEntries = await loadOnchainActivityFeed();
+      const nextFeed = await loadOnchainActivityFeed({
+        existingEntries: entriesRef.current,
+        fromBlock: latestFetchedBlockRef.current !== null ? latestFetchedBlockRef.current + 1 : undefined,
+      });
       const syncedAt = Date.now();
-      setEntries(nextEntries);
+      setEntries(nextFeed.entries);
       setError(null);
       setLastUpdatedAt(syncedAt);
+      setLatestFetchedBlock(nextFeed.latestFetchedBlock);
+      entriesRef.current = nextFeed.entries;
+      latestFetchedBlockRef.current = nextFeed.latestFetchedBlock;
       writeCachedActivityFeed({
-        entries: nextEntries,
+        entries: nextFeed.entries,
         lastUpdatedAt: syncedAt,
+        latestFetchedBlock: nextFeed.latestFetchedBlock,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unable to load on-chain activity.';
-      if (entries.length === 0) {
+      if (entriesRef.current.length === 0) {
         setError(message);
       }
     } finally {
       setIsLoading(false);
     }
-  }, [entries.length]);
+  }, []);
 
   useEffect(() => {
     void refresh();

@@ -48,7 +48,6 @@ export function LendingPage() {
     loadLendingMarkets,
     loadLendingPositions,
     quoteLendingHealth,
-    recommendedExecutionMode,
     repayToLending,
     withdrawFromLending,
     withdrawMaxFromLending,
@@ -62,18 +61,14 @@ export function LendingPage() {
   const [health, setHealth] = useState<StarkZapLendingHealthView | null>(null);
   const [maxBorrow, setMaxBorrow] = useState<string | null>(null);
   const [lastTx, setLastTx] = useState<{ hash: string; explorerUrl: string } | null>(null);
-  const [feeMode, setFeeMode] = useState<StarkZapExecutionMode>(recommendedExecutionMode);
   const [activeAction, setActiveAction] = useState<'submit' | 'health' | 'max' | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const accountInitializing = isConnected && !isWalletReady;
+  const feeMode: StarkZapExecutionMode = 'user_pays';
 
   const requiresPair = action === 'borrow' || action === 'repay';
   const requiresAmount = action !== 'withdraw_max';
-
-  useEffect(() => {
-    setFeeMode(recommendedExecutionMode);
-  }, [recommendedExecutionMode]);
 
   const refresh = async () => {
     try {

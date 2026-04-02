@@ -6,3 +6,5 @@ export { AvnuSwapProvider } from '../../node_modules/starkzap/dist/src/swap/avnu
 export { EkuboDcaProvider } from '../../node_modules/starkzap/dist/src/dca/ekubo.js';
 export { AvnuDcaProvider } from '../../node_modules/starkzap/dist/src/dca/avnu.js';
 export { VesuLendingProvider } from '../../node_modules/starkzap/dist/src/lending/vesu/provider.js';
+export { getStakingPreset } from '../../node_modules/starkzap/dist/src/staking/presets.js';
+export { Staking } from '../../node_modules/starkzap/dist/src/staking/staking.js';

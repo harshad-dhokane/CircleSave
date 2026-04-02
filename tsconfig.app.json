@@ -12,6 +12,9 @@
     "paths": {
       "@/*": [
         "./src/*"
+      ],
+      "starkzap-internal/*": [
+        "./node_modules/starkzap/dist/src/*"
       ]
     },
     /* Bundler mode */

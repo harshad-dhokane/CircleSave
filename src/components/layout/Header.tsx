@@ -1,7 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useWallet } from '@/hooks/useWallet';
 import { Button } from '@/components/ui/button';
-import { Wallet, Menu, X, Users, TrendingUp, ArrowRightLeft, Repeat, PiggyBank, BookOpen, Moon, Sun, AlertTriangle, FileText, ChevronDown } from 'lucide-react';
+import { Wallet, Menu, X, Users, TrendingUp, ArrowRightLeft, Repeat, PiggyBank, BookOpen, Moon, Sun, AlertTriangle, FileText, ChevronDown, Landmark } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { formatAddress } from '@/lib/constants';
 import { useTheme } from 'next-themes';
@@ -33,6 +33,8 @@ const sdkItems = [
   { href: '/swap', label: 'Swap', description: 'Preview and execute routes from the shared wallet.', icon: ArrowRightLeft },
   { href: '/dca', label: 'DCA', description: 'Create recurring buy orders from the same session.', icon: Repeat },
   { href: '/lending', label: 'Lend', description: 'Deposit and withdraw through Vesu.', icon: PiggyBank },
+  // Staking disabled — no live Sepolia pools
+  // { href: '/staking', label: 'Stake', description: 'Delegate STRK to a staking pool and earn rewards.', icon: Landmark },
 ] as const;
 
 function isNavItemActive(pathname: string, href: string) {

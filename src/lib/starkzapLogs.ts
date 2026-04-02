@@ -1,6 +1,6 @@
 import { getVoyagerTxUrl } from '@/lib/constants';
 
-export type StarkZapLogKind = 'swap' | 'dca' | 'lending';
+export type StarkZapLogKind = 'swap' | 'dca' | 'lending' | 'staking';
 export type StarkZapLogStatus = 'submitted' | 'confirmed' | 'failed';
 
 export interface StarkZapLogDetails {

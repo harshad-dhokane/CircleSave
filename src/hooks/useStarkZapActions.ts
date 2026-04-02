@@ -99,6 +99,13 @@ export interface StarkZapTxView {
   explorerUrl: string;
 }
 
+export interface StarkZapStakingPositionView {
+  staked: string;
+  rewards: string;
+  unpoolTime?: string;
+  commission?: string;
+}
+
 const PRIMARY_TOKENS: StarkZapTokenKey[] = ['ETH', 'USDC', 'STRK'];
 const SWAP_PROVIDER_IDS: Array<Exclude<StarkZapSwapProviderId, 'best'>> = ['avnu', 'ekubo'];
 const DCA_PROVIDER_IDS: StarkZapDcaProviderId[] = ['avnu', 'ekubo'];
@@ -153,7 +160,7 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: str
   }
 }
 
-function toFriendlyActionError(kind: 'swap' | 'dca' | 'lending', error: unknown) {
+function toFriendlyActionError(kind: 'swap' | 'dca' | 'lending' | 'staking', error: unknown) {
   const message = getErrorMessage(error).trim();
   const lower = message.toLowerCase();
 
@@ -208,7 +215,7 @@ function toFriendlyActionError(kind: 'swap' | 'dca' | 'lending', error: unknown)
     lower.includes('networkerror') ||
     lower.includes('failed to fetch') ||
     lower.includes('timeout') ||
-    lower.includes('rpc')
+    (lower.includes('rpc') && (lower.includes('unavailable') || lower.includes('error') || lower.includes('connect')))
   ) {
     return 'The Sepolia RPC or StarkZap provider API did not respond. Please try again in a moment.';
   }
@@ -318,7 +325,7 @@ export function useStarkZapActions() {
   const trackTransaction = useCallback(async (params: {
     title: string;
     summary: string;
-    kind: 'swap' | 'dca' | 'lending';
+    kind: 'swap' | 'dca' | 'lending' | 'staking';
     providerId: string;
     transactionHash: string;
     details?: StarkZapLogDetails;
@@ -361,7 +368,7 @@ export function useStarkZapActions() {
   }, [address, provider]);
 
   const runAction = useCallback(async <T,>(
-    kind: 'swap' | 'dca' | 'lending',
+    kind: 'swap' | 'dca' | 'lending' | 'staking',
     action: () => Promise<T>,
   ): Promise<T> => {
     try {
@@ -1149,7 +1156,7 @@ export function useStarkZapActions() {
         providerId: 'vesu',
         transactionHash: tx.hash,
         details: {
-          action: params.lendingAction === 'borrow' ? 'withdraw' : 'withdraw',
+          action: params.lendingAction === 'borrow' ? 'borrow' : 'withdraw',
           inputAmount: params.sourceAmount,
           inputToken: params.sourceToken,
           outputToken: 'STRK',
@@ -1211,10 +1218,13 @@ export function useStarkZapActions() {
       toast.success(automationEnabled ? 'Circle and auto-funding plan submitted' : 'Circle creation submitted');
 
       if (!automationEnabled || !params.automation) {
-        return {
-          hash: tx.hash,
-          explorerUrl: tx.explorerUrl,
-        };
+        return trackTransaction({
+          title: 'Create Circle',
+          summary: `Create ${params.circle.name}`,
+          kind: 'swap',
+          providerId: 'circlesave',
+          transactionHash: tx.hash,
+        });
       }
 
       return trackTransaction({
@@ -1231,6 +1241,115 @@ export function useStarkZapActions() {
           frequency: params.automation.frequency,
           outputToken: 'STRK',
         },
+      });
+    });
+  }, [getWallet, normalizeExecutionMode, runAction, trackTransaction]);
+
+  // ── Staking ─────────────────────────────────────────────────────────
+
+  const stakeTokens = useCallback(async (params: {
+    poolAddress: string;
+    amount: string;
+    feeMode?: StarkZapExecutionMode;
+  }) => {
+    const executionMode = normalizeExecutionMode(params.feeMode);
+    return runAction('staking', async () => {
+      const wallet = getWallet();
+      const strkToken = sepoliaTokens.STRK;
+      const amount = Amount.parse(params.amount, strkToken);
+      const tx = await wallet.stake(
+        fromAddress(params.poolAddress),
+        amount,
+        { feeMode: executionMode },
+      );
+      return trackTransaction({
+        title: 'Stake STRK',
+        summary: `Stake ${params.amount} STRK in delegation pool`,
+        kind: 'swap',
+        providerId: 'starkzap',
+        transactionHash: tx.hash,
+      });
+    });
+  }, [getWallet, normalizeExecutionMode, runAction, trackTransaction]);
+
+  const loadStakingPosition = useCallback(async (params: {
+    poolAddress: string;
+  }): Promise<StarkZapStakingPositionView | null> => {
+    return runAction('staking', async () => {
+      const wallet = getWallet();
+      const position = await wallet.getPoolPosition(fromAddress(params.poolAddress));
+      if (!position) return null;
+      return {
+        staked: position.staked.toFormatted(),
+        rewards: position.rewards.toFormatted(),
+        unpoolTime: position.unpoolTime ? position.unpoolTime.toISOString() : undefined,
+      };
+    });
+  }, [getWallet, runAction]);
+
+  const claimStakingRewards = useCallback(async (params: {
+    poolAddress: string;
+    feeMode?: StarkZapExecutionMode;
+  }) => {
+    const executionMode = normalizeExecutionMode(params.feeMode);
+    return runAction('staking', async () => {
+      const wallet = getWallet();
+      const tx = await wallet.claimPoolRewards(
+        fromAddress(params.poolAddress),
+        { feeMode: executionMode },
+      );
+      return trackTransaction({
+        title: 'Claim Staking Rewards',
+        summary: 'Claim accumulated delegation pool rewards',
+        kind: 'swap',
+        providerId: 'starkzap',
+        transactionHash: tx.hash,
+      });
+    });
+  }, [getWallet, normalizeExecutionMode, runAction, trackTransaction]);
+
+  const unstakeIntent = useCallback(async (params: {
+    poolAddress: string;
+    amount: string;
+    feeMode?: StarkZapExecutionMode;
+  }) => {
+    const executionMode = normalizeExecutionMode(params.feeMode);
+    return runAction('staking', async () => {
+      const wallet = getWallet();
+      const strkToken = sepoliaTokens.STRK;
+      const amount = Amount.parse(params.amount, strkToken);
+      const tx = await wallet.exitPoolIntent(
+        fromAddress(params.poolAddress),
+        amount,
+        { feeMode: executionMode },
+      );
+      return trackTransaction({
+        title: 'Unstake Intent',
+        summary: `Request unstake of ${params.amount} STRK`,
+        kind: 'swap',
+        providerId: 'starkzap',
+        transactionHash: tx.hash,
+      });
+    });
+  }, [getWallet, normalizeExecutionMode, runAction, trackTransaction]);
+
+  const unstakeComplete = useCallback(async (params: {
+    poolAddress: string;
+    feeMode?: StarkZapExecutionMode;
+  }) => {
+    const executionMode = normalizeExecutionMode(params.feeMode);
+    return runAction('staking', async () => {
+      const wallet = getWallet();
+      const tx = await wallet.exitPool(
+        fromAddress(params.poolAddress),
+        { feeMode: executionMode },
+      );
+      return trackTransaction({
+        title: 'Complete Unstake',
+        summary: 'Finalize pool exit and receive STRK',
+        kind: 'swap',
+        providerId: 'starkzap',
+        transactionHash: tx.hash,
       });
     });
   }, [getWallet, normalizeExecutionMode, runAction, trackTransaction]);
@@ -1270,5 +1389,10 @@ export function useStarkZapActions() {
     fundCircleWithSwap,
     fundCircleFromLending,
     launchCircleWithAutomation,
+    stakeTokens,
+    loadStakingPosition,
+    claimStakingRewards,
+    unstakeIntent,
+    unstakeComplete,
   };
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowDownUp,
@@ -57,18 +57,17 @@ export function SwapPage() {
     compareSwapProviders,
     executeSwap,
     isWalletReady,
-    recommendedExecutionMode,
     swapProviderOptions,
   } = useStarkZapActions();
   const [tokenIn, setTokenIn] = useState<StarkZapTokenKey>('STRK');
   const [tokenOut, setTokenOut] = useState<StarkZapTokenKey>('ETH');
   const [amount, setAmount] = useState('5');
   const [providerId, setProviderId] = useState<StarkZapSwapProviderId>('best');
-  const [feeMode, setFeeMode] = useState<StarkZapExecutionMode>(recommendedExecutionMode);
   const [comparisons, setComparisons] = useState<StarkZapSwapComparison[]>([]);
   const [lastTx, setLastTx] = useState<{ hash: string; explorerUrl: string } | null>(null);
   const [activeAction, setActiveAction] = useState<'preview' | 'execute' | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const feeMode: StarkZapExecutionMode = 'user_pays';
 
   const selectedRoute = useMemo(
     () => ROUTE_PRESETS.find((route) => route.tokenIn === tokenIn && route.tokenOut === tokenOut),
@@ -79,10 +78,6 @@ export function SwapPage() {
     [comparisons, providerId],
   );
   const accountInitializing = isConnected && !isWalletReady;
-
-  useEffect(() => {
-    setFeeMode(recommendedExecutionMode);
-  }, [recommendedExecutionMode]);
 
   const handlePreview = async () => {
     try {

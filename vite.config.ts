@@ -48,6 +48,7 @@ export default defineConfig({
     dedupe: ['dayjs', 'qs'],
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "starkzap-internal": path.resolve(__dirname, "./node_modules/starkzap/dist/src"),
       dayjs: path.resolve(__dirname, './node_modules/dayjs/esm/index.js'),
       '@avnu/avnu-sdk/node_modules/dayjs': path.resolve(__dirname, './node_modules/dayjs/esm/index.js'),
       '@avnu/avnu-sdk/node_modules/dayjs/dayjs.min.js': path.resolve(__dirname, './node_modules/dayjs/esm/index.js'),
