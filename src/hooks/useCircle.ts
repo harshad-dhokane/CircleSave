@@ -27,7 +27,7 @@ import {
 } from '@/lib/circleCalls';
 import { addressesEqual, normalizeAddress } from '@/lib/address';
 import { isCircleReadyToStart } from '@/lib/circleState';
-import { CONTRACTS, getVoyagerTxUrl } from '@/lib/constants';
+import { CircleType, CONTRACTS, getVoyagerTxUrl } from '@/lib/constants';
 import type {
   Circle,
   CircleJoinRequest,
@@ -1084,6 +1084,21 @@ export function useJoinCircle() {
 
   const joinCircle = useCallback((circleAddress: string) => {
     return runAction(async (account) => {
+      const infoResponse = await callReadContract({
+        contractAddress: circleAddress,
+        entrypoint: 'get_info',
+        calldata: [],
+      });
+      const circle = parseRawCircleInfo(infoResponse);
+
+      if (circle.circleType === CircleType.APPROVAL_REQUIRED) {
+        throw new Error('This circle requires approval first. Send a join request instead.');
+      }
+
+      if (circle.circleType === CircleType.INVITE_ONLY) {
+        throw new Error('This circle is invite-only. Public joins are not available in CircleSave yet.');
+      }
+
       const circleContract = newContract(CIRCLE_ABI, circleAddress, account);
       const collateralRequired = toBigIntValue(await circleContract.get_collateral_required());
 
@@ -1105,6 +1120,21 @@ export function useRequestJoinCircle() {
 
   const requestJoinCircle = useCallback((circleAddress: string, message: string) => {
     return runAction(async (account) => {
+      const infoResponse = await callReadContract({
+        contractAddress: circleAddress,
+        entrypoint: 'get_info',
+        calldata: [],
+      });
+      const circle = parseRawCircleInfo(infoResponse);
+
+      if (circle.circleType === CircleType.OPEN) {
+        throw new Error('This circle allows direct joins, so a request is not needed.');
+      }
+
+      if (circle.circleType === CircleType.INVITE_ONLY) {
+        throw new Error('This circle is invite-only. Public join requests are not available in CircleSave yet.');
+      }
+
       const circleContract = newContract(CIRCLE_ABI, circleAddress, account);
       const collateralRequired = toBigIntValue(await circleContract.get_collateral_required());
       const requestMessage = message.trim().slice(0, 31) || 'Requesting to join';
@@ -1256,15 +1286,15 @@ export function useIncomingCircleRequests(options?: { pollMs?: number }) {
         addressesEqual(circle.creator, address) &&
         circle.status === 'PENDING',
       );
-      const approvalCircles = creatorCircles.filter((circle) => circle.circleType === 1);
-      const openCircles = creatorCircles.filter((circle) => circle.circleType === 0 && circle.currentMembers > 0);
+      const approvalCircles = creatorCircles.filter((circle) => circle.circleType === CircleType.APPROVAL_REQUIRED);
+      const memberNoticeCircles = creatorCircles.filter((circle) => circle.currentMembers > 0);
 
       const [requestGroups, memberGroups] = await Promise.all([
         Promise.all(
           approvalCircles.map((circle) => fetchPendingRequestsForCircle(circle)),
         ),
         Promise.all(
-          openCircles.map(async (circle) => ({
+          memberNoticeCircles.map(async (circle) => ({
             circle,
             members: await fetchMembersForCircle(circle),
           })),

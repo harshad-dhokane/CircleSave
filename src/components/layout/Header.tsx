@@ -287,7 +287,7 @@ export function Header() {
                     <div className="mb-3 flex items-center justify-between gap-3">
                       <div>
                         <p className="text-xs font-black uppercase tracking-[0.08em] text-muted-foreground">Member Joins</p>
-                        <h4 className="text-base font-black text-foreground">Open Circles</h4>
+                        <h4 className="text-base font-black text-foreground">Managed Circles</h4>
                       </div>
                       <div className="flex items-center gap-2">
                         {memberJoinCount > 0 && (
@@ -310,7 +310,7 @@ export function Header() {
                       isLoading={requestsLoading}
                       compact
                       className="mb-4 max-h-[22rem] overflow-y-auto pr-1"
-                      emptyDescription="New members joining your open circles will show up here."
+                      emptyDescription="New members joining your managed circles will show up here."
                     />
 
                     {readyToStartCircles.length > 0 && (

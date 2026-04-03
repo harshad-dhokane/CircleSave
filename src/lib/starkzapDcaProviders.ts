@@ -19,6 +19,11 @@ function toHexAmount(value: bigint) {
   return `0x${value.toString(16)}`;
 }
 
+function toAvnuFrequency(frequency: string) {
+  // AVNU Sepolia accepts day-based weekly durations more reliably than `P1W`.
+  return frequency === 'P1W' ? 'P7D' : frequency;
+}
+
 function validatePricingStrategy(request: DcaCreateRequest) {
   const minBuyAmount = request.pricingStrategy?.minBuyAmount;
   const maxBuyAmount = request.pricingStrategy?.maxBuyAmount;
@@ -41,13 +46,20 @@ function validatePricingStrategy(request: DcaCreateRequest) {
 }
 
 function toPricingStrategy(request: DcaCreateRequest) {
+  const minBuyAmountBase = request.pricingStrategy?.minBuyAmount?.toBase();
+  const maxBuyAmountBase = request.pricingStrategy?.maxBuyAmount?.toBase();
+
+  if (minBuyAmountBase == null && maxBuyAmountBase == null) {
+    return {};
+  }
+
   return {
-    tokenToMinAmount: request.pricingStrategy?.minBuyAmount
-      ? toHexAmount(request.pricingStrategy.minBuyAmount.toBase())
-      : null,
-    tokenToMaxAmount: request.pricingStrategy?.maxBuyAmount
-      ? toHexAmount(request.pricingStrategy.maxBuyAmount.toBase())
-      : null,
+    ...(minBuyAmountBase != null && {
+      tokenToMinAmount: toHexAmount(minBuyAmountBase),
+    }),
+    ...(maxBuyAmountBase != null && {
+      tokenToMaxAmount: toHexAmount(maxBuyAmountBase),
+    }),
   };
 }
 
@@ -99,7 +111,7 @@ async function requestAvnuDcaCreateCalls(baseUrl: string, request: DcaCreateRequ
       buyTokenAddress: request.buyToken.address,
       sellAmount: toHexAmount(request.sellAmount.toBase()),
       sellAmountPerCycle: toHexAmount(request.sellAmountPerCycle.toBase()),
-      frequency: request.frequency,
+      frequency: toAvnuFrequency(request.frequency),
       pricingStrategy: toPricingStrategy(request),
       traderAddress: request.traderAddress,
     }),

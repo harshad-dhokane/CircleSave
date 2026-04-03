@@ -218,9 +218,14 @@ function toFriendlyActionError(kind: 'swap' | 'dca' | 'lending' | 'staking' | 'b
   if (
     lower.includes('transfer amount exceeds balance') ||
     lower.includes('insufficient balance') ||
-    lower.includes('insufficient_balance')
+    lower.includes('insufficient_balance') ||
+    lower.includes("taker's balance is not high enough")
   ) {
     return 'Your wallet does not have enough balance for this action.';
+  }
+
+  if (lower.includes('not enough iterations')) {
+    return 'Increase the total budget or lower the per-cycle amount so the plan runs more than once.';
   }
 
   if (
@@ -250,6 +255,10 @@ function toFriendlyActionError(kind: 'swap' | 'dca' | 'lending' | 'staking' | 'b
     (lower.includes('rpc') && (lower.includes('unavailable') || lower.includes('error') || lower.includes('connect')))
   ) {
     return 'The Sepolia RPC or StarkZap provider API did not respond. Please try again in a moment.';
+  }
+
+  if (kind === 'dca' && lower === 'bad request') {
+    return 'AVNU rejected that DCA setup on Sepolia. Try Daily or Every 12 Hours, and make sure the sell token wallet balance is funded.';
   }
 
   return message || 'Unexpected StarkZap error';
@@ -1554,6 +1563,16 @@ export function useStarkZapActions() {
 
       if (automationEnabled && params.automation) {
         const providerId = params.automation.providerId || 'avnu';
+        const unsupportedPairMessage = getUnsupportedDcaPairMessage(
+          providerId,
+          params.automation.sellToken,
+          'STRK',
+        );
+
+        if (unsupportedPairMessage) {
+          throw new Error(unsupportedPairMessage);
+        }
+
         const sellToken = sepoliaTokens[params.automation.sellToken];
 
         builder.dcaCreate({

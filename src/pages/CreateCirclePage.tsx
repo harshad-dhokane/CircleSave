@@ -9,18 +9,11 @@ import {
 import { toast } from 'sonner';
 import { useWallet } from '@/hooks/useWallet';
 import { useCreateCircle } from '@/hooks/useCircle';
-import {
-  type StarkZapDcaFrequency,
-  type StarkZapDcaProviderId,
-  type StarkZapTokenKey,
-  useStarkZapActions,
-} from '@/hooks/useStarkZapActions';
 import { Button } from '@/components/ui/button';
 import { ProcessInfoButton } from '@/components/help/ProcessInfoButton';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
 import {
   Select,
   SelectContent,
@@ -38,9 +31,9 @@ import {
 } from '@/lib/constants';
 
 const CIRCLE_TYPES = [
-  { value: CircleType.OPEN, label: 'Open' },
-  { value: CircleType.APPROVAL_REQUIRED, label: 'Approval' },
-  { value: CircleType.INVITE_ONLY, label: 'Invite only' },
+  { value: CircleType.OPEN, label: 'Open', disabled: false },
+  { value: CircleType.APPROVAL_REQUIRED, label: 'Approval', disabled: false },
+  { value: CircleType.INVITE_ONLY, label: 'Invite only', disabled: true },
 ] as const;
 
 const CATEGORIES = [
@@ -55,12 +48,6 @@ export function CreateCirclePage() {
   const navigate = useNavigate();
   const { isConnected } = useWallet();
   const { createCircle, isSubmitting, voyagerUrl, error: createError } = useCreateCircle();
-  const {
-    dcaProviderOptions,
-    launchCircleWithAutomation,
-    recommendedExecutionMode,
-    supportsSponsoredExecution,
-  } = useStarkZapActions();
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -69,16 +56,6 @@ export function CreateCirclePage() {
   const [circleType, setCircleType] = useState<number>(CircleType.OPEN);
   const [category, setCategory] = useState<number>(CircleCategory.FRIENDS);
   const [collateralRatio, setCollateralRatio] = useState(150);
-  const [automationEnabled, setAutomationEnabled] = useState(true);
-  const [automationSellToken, setAutomationSellToken] = useState<StarkZapTokenKey>('USDC');
-  const [automationBudget, setAutomationBudget] = useState('300');
-  const [automationPerCycle, setAutomationPerCycle] = useState('100');
-  const [automationFrequency, setAutomationFrequency] = useState<StarkZapDcaFrequency>('P1W');
-  const [automationProvider, setAutomationProvider] = useState<StarkZapDcaProviderId>('avnu');
-  const [isLaunchingAutomation, setIsLaunchingAutomation] = useState(false);
-  const feeMode = recommendedExecutionMode === 'sponsored' && supportsSponsoredExecution
-    ? 'sponsored'
-    : 'user_pays';
 
   const totalPot = BigInt(Math.floor(parseFloat(monthlyAmount) || 0)) * BigInt(maxMembers) * BigInt(1e18);
   const collateralAmount = BigInt(Math.floor(parseFloat(monthlyAmount) || 0)) * BigInt(collateralRatio) / BigInt(100) * BigInt(1e18);
@@ -86,8 +63,9 @@ export function CreateCirclePage() {
     && description.trim().length > 0
     && parseFloat(monthlyAmount) > 0
     && maxMembers >= 2
-    && maxMembers <= 50;
-  const isBusy = isSubmitting || isLaunchingAutomation;
+    && maxMembers <= 50
+    && circleType !== CircleType.INVITE_ONLY;
+  const isBusy = isSubmitting;
 
   const handleCreate = async () => {
     if (!isConnected) {
@@ -96,50 +74,12 @@ export function CreateCirclePage() {
     }
 
     if (!canSubmit) {
-      toast.error('Complete the required circle details first');
+      toast.error(
+        circleType === CircleType.INVITE_ONLY
+          ? 'Invite-only circles are temporarily disabled until owner-managed invites are implemented.'
+          : 'Complete the required circle details first',
+      );
       return;
-    }
-
-    if (automationEnabled) {
-      try {
-        setIsLaunchingAutomation(true);
-        const tx = await launchCircleWithAutomation({
-          circle: {
-            name,
-            description,
-            monthlyAmount,
-            maxMembers,
-            circleType,
-            category,
-            collateralRatio,
-          },
-          automation: {
-            enabled: true,
-            sellToken: automationSellToken,
-            sellAmount: automationBudget,
-            sellAmountPerCycle: automationPerCycle,
-            frequency: automationFrequency,
-            providerId: automationProvider,
-          },
-          feeMode,
-        });
-
-        toast.success(
-          <div>
-            Circle and automation submitted.{' '}
-            <a href={tx.explorerUrl} target="_blank" rel="noopener noreferrer" className="underline font-semibold">
-              View on Voyager
-            </a>
-          </div>,
-        );
-        navigate('/circles');
-        return;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to launch circle automation';
-        toast.error(message);
-      } finally {
-        setIsLaunchingAutomation(false);
-      }
     }
 
     const result = await createCircle({
@@ -200,7 +140,7 @@ export function CreateCirclePage() {
                 Circle setup
               </h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Define the group, contribution size, access style, and member count before you review or add automation.
+                Define the group, contribution size, access style, and member count before you review and create the circle.
               </p>
             </div>
             <ProcessInfoButton
@@ -209,7 +149,7 @@ export function CreateCirclePage() {
               items={[
                 {
                   label: 'Circle type',
-                  description: 'Open circles allow direct joins, approval circles collect requests first, and invite-only circles keep membership tightly controlled.',
+                  description: 'Open circles allow direct joins. Approval circles collect requests first. Invite-only is temporarily disabled until owner-managed invites are implemented.',
                 },
                 {
                   label: 'Monthly amount',
@@ -224,7 +164,7 @@ export function CreateCirclePage() {
                   description: 'If this is your first run, use a short name, a clear description, and a moderate member count such as 5 to 10.',
                 },
               ]}
-              footer="You can create a plain circle first, or keep auto-funding on and submit both flows together."
+              footer="Review the summary on the right, then submit the circle once everything matches the group you want to launch."
             />
           </div>
 
@@ -271,12 +211,15 @@ export function CreateCirclePage() {
                 </SelectTrigger>
                 <SelectContent>
                   {CIRCLE_TYPES.map((type) => (
-                    <SelectItem key={type.value} value={type.value.toString()}>
+                    <SelectItem key={type.value} value={type.value.toString()} disabled={type.disabled}>
                       {type.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Invite-only creation is temporarily disabled until owner-managed invites are added.
+              </p>
             </div>
 
             <div>
@@ -334,11 +277,11 @@ export function CreateCirclePage() {
               {isBusy ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  {automationEnabled ? 'Launching...' : 'Creating...'}
+                  Creating...
                 </>
               ) : (
                 <>
-                  {automationEnabled ? 'Launch Circle + Funding' : 'Create Circle'}
+                  Create Circle
                   <Sparkles className="h-4 w-4" />
                 </>
               )}
@@ -430,106 +373,6 @@ export function CreateCirclePage() {
                 <ExternalLink className="h-4 w-4" />
               </a>
             ) : null}
-          </section>
-
-          <section className="neo-panel p-4 md:p-5">
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                  Step 3
-                </p>
-                <h3 className="font-display text-[1.25rem] font-semibold tracking-[-0.04em] text-foreground">
-                  Auto-funding
-                </h3>
-              </div>
-              <div className="flex items-center gap-2">
-                <Switch checked={automationEnabled} onCheckedChange={setAutomationEnabled} />
-                <ProcessInfoButton
-                  title="Circle auto-funding"
-                  description="Automation is optional. It adds a recurring StarkZap DCA plan alongside the circle."
-                  items={[
-                    {
-                      label: 'Sell token and budget',
-                      description: 'Choose the asset you want to spend and the total budget available for the recurring plan.',
-                    },
-                    {
-                      label: 'Per cycle and frequency',
-                      description: 'Per cycle controls how much budget is used each run. Frequency controls how often the order executes.',
-                    },
-                    {
-                      label: 'Provider',
-                      description: 'The provider controls where the DCA order routes. Use the one with the strongest live support for your pair.',
-                    },
-                    {
-                      label: 'When to disable',
-                      description: 'Turn automation off if you only want the circle itself and prefer to fund manually later.',
-                    },
-                  ]}
-                />
-              </div>
-            </div>
-
-            {automationEnabled ? (
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <Label className="mb-2 block text-sm font-semibold">Sell token</Label>
-                  <Select value={automationSellToken} onValueChange={(value) => setAutomationSellToken(value as StarkZapTokenKey)}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="USDC">USDC</SelectItem>
-                      <SelectItem value="ETH">ETH</SelectItem>
-                      <SelectItem value="STRK">STRK</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div>
-                  <Label className="mb-2 block text-sm font-semibold">Provider</Label>
-                  <Select value={automationProvider} onValueChange={(value) => setAutomationProvider(value as StarkZapDcaProviderId)}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {dcaProviderOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div>
-                  <Label className="mb-2 block text-sm font-semibold">Budget</Label>
-                  <Input value={automationBudget} onChange={(event) => setAutomationBudget(event.target.value)} />
-                </div>
-
-                <div>
-                  <Label className="mb-2 block text-sm font-semibold">Per cycle</Label>
-                  <Input value={automationPerCycle} onChange={(event) => setAutomationPerCycle(event.target.value)} />
-                </div>
-
-                <div className="sm:col-span-2">
-                  <Label className="mb-2 block text-sm font-semibold">Frequency</Label>
-                  <Select value={automationFrequency} onValueChange={(value) => setAutomationFrequency(value as StarkZapDcaFrequency)}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="PT12H">Every 12 Hours</SelectItem>
-                      <SelectItem value="P1D">Daily</SelectItem>
-                      <SelectItem value="P1W">Weekly</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            ) : (
-              <div className="rounded-[22px] border border-dashed border-black/10 px-4 py-8 text-sm text-muted-foreground dark:border-white/10">
-                The circle will be created without an automation plan.
-              </div>
-            )}
           </section>
         </div>
       </div>

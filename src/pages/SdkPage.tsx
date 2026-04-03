@@ -158,7 +158,7 @@ const workspaceGuide: WorkspaceGuideEntry[] = [
   },
   {
     title: 'Create Circle',
-    body: 'Use the setup form to launch a new savings circle, choose members, contribution amount, collateral ratio, and optional funding automation.',
+    body: 'Use the setup form to launch a new savings circle, choose members, contribution amount, collateral ratio, and review the configuration before submitting.',
     color: '#FFB457',
     route: { label: 'Create Circle', to: '/circles/create' },
   },
@@ -287,9 +287,9 @@ const featureMap: FeatureMapEntry[] = [
     ],
   },
   {
-    title: 'Launch Circle + DCA Bundle',
+    title: 'Create Circle Flow',
     summary:
-      'Circle creation can optionally add a recurring STRK DCA plan during the same launch flow, so a new circle is created with its funding strategy attached.',
+      'Circle creation now focuses on the core factory-backed flow so users can launch a plain circle first and use funding tools separately when needed.',
     color: '#F4A261',
     icon: Blocks,
     routes: [
@@ -297,7 +297,6 @@ const featureMap: FeatureMapEntry[] = [
     ],
     files: [
       'src/pages/CreateCirclePage.tsx',
-      'src/hooks/useStarkZapActions.ts',
       'src/lib/circleCalls.ts',
     ],
   },
@@ -394,20 +393,19 @@ this.dca().registerProvider(new EkuboDcaProvider());`,
   );`,
   },
   {
-    title: 'Create Circle + DCA Launch Bundle',
-    file: 'src/hooks/useStarkZapActions.ts',
+    title: 'Create Circle Factory Call',
+    file: 'src/lib/circleCalls.ts',
     summary:
-      'The create-circle flow can attach a recurring STRK DCA order in the same launch transaction builder.',
-    code: String.raw`const builder = wallet.tx().add(buildCreateCircleCall(params.circle));
-
-builder.dcaCreate({
-  provider: providerId,
-  sellToken,
-  buyToken: sepoliaTokens.STRK,
-  sellAmount: Amount.parse(params.automation.sellAmount, sellToken),
-  sellAmountPerCycle: Amount.parse(params.automation.sellAmountPerCycle, sellToken),
-  frequency: params.automation.frequency,
-});`,
+      'The create page now submits a plain factory-backed circle creation call without bundling launch-time automation.',
+    code: String.raw`return populateContractCall(CIRCLE_FACTORY_ABI, CONTRACTS.CIRCLE_FACTORY, 'create_circle', [
+  nameAsFelt,
+  descriptionAsFelt,
+  cairo.uint256(monthlyAmountWei),
+  params.maxMembers,
+  toCairoEnum(params.circleType, ['OPEN', 'APPROVAL_REQUIRED', 'INVITE_ONLY']),
+  toCairoEnum(params.category, ['FRIENDS', 'FAMILY', 'COWORKERS', 'NEIGHBORS', 'INTEREST']),
+  params.collateralRatio,
+]);`,
   },
   {
     title: 'Dashboard Activity Filter',
@@ -505,22 +503,33 @@ function FilePill(props: { path: string }) {
   );
 }
 
-function TopicTabTrigger(props: { topic: GuideTopic }) {
+function TopicTabTrigger(props: { topic: GuideTopic; active: boolean }) {
   const Icon = props.topic.icon;
 
   return (
     <TabsTrigger
       value={props.topic.id}
-      className="flex-none min-w-[170px] shrink-0 justify-start rounded-[18px] border border-black/10 bg-black/[0.03] px-3 py-2.5 text-left text-[13px] font-semibold uppercase tracking-[0.1em] text-foreground transition-all hover:bg-black/[0.05] dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/8 data-[state=active]:border-[#9ad255]/35 data-[state=active]:bg-[#B5F36B] data-[state=active]:text-slate-950 data-[state=active]:shadow-[0_16px_36px_-24px_rgba(120,170,43,0.34)] dark:data-[state=active]:border-[#9ad255]/28 dark:data-[state=active]:bg-[#B5F36B] dark:data-[state=active]:text-slate-950 sm:min-w-[188px] xl:min-w-0 xl:w-full xl:flex-1"
+      className={cn(
+        'flex-none min-w-[170px] shrink-0 justify-start rounded-[18px] border px-3 py-2.5 text-left text-[13px] font-semibold uppercase tracking-[0.1em] transition-all sm:min-w-[188px] xl:min-w-0 xl:w-full xl:flex-1',
+        props.active
+          ? 'border-[#0f172a]/72 bg-[#0f172a] text-white shadow-[0_18px_40px_-24px_rgba(15,23,42,0.62)] hover:bg-[#162131] dark:border-[#0f172a]/72 dark:bg-[#0f172a] dark:text-white dark:hover:bg-[#162131]'
+          : 'border-black/10 bg-black/[0.03] text-foreground hover:bg-black/[0.05] dark:border-white/10 dark:bg-white/5 dark:text-foreground dark:hover:bg-white/8',
+      )}
     >
       <div className="flex items-start gap-3">
         <div
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border shadow-[0_14px_28px_-20px_rgba(15,23,42,0.18)]"
-          style={{
-            backgroundColor: `${props.topic.color}18`,
-            borderColor: `${props.topic.color}45`,
-            color: props.topic.color,
-          }}
+          style={props.active
+            ? {
+              backgroundColor: props.topic.color,
+              borderColor: props.topic.color,
+              color: '#0f172a',
+            }
+            : {
+              backgroundColor: `${props.topic.color}18`,
+              borderColor: `${props.topic.color}45`,
+              color: props.topic.color,
+            }}
         >
           <Icon className="h-4 w-4" />
         </div>
@@ -694,7 +703,7 @@ export function SdkPage() {
           <aside className="space-y-3 xl:sticky xl:top-[88px] xl:self-start">
             <TabsList className="neo-panel h-auto w-full flex-nowrap justify-start gap-1 overflow-x-auto p-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden xl:flex-col xl:flex-nowrap xl:items-stretch xl:overflow-visible">
               {guideTopics.map((topic) => (
-                <TopicTabTrigger key={topic.id} topic={topic} />
+                <TopicTabTrigger key={topic.id} topic={topic} active={activeTopic === topic.id} />
               ))}
             </TabsList>
           </aside>
@@ -748,8 +757,8 @@ export function SdkPage() {
                       color: '#FF6B6B',
                     },
                     {
-                      title: 'Launch With DCA',
-                      body: 'New circles can be created with an attached recurring STRK funding plan.',
+                      title: 'Create Plain Circles',
+                      body: 'New circles are launched through the factory flow first, then funded separately when needed.',
                       color: '#FFE66D',
                     },
                     {
@@ -947,7 +956,7 @@ export function SdkPage() {
                     <p className={helpKickerClass}>Create</p>
                     <h3 className={cn(helpTitleClass, 'text-xl')}>Launch A New Circle</h3>
                     <p className={helpBodyClass}>
-                      The create page is a four-step form for name, description, amount, members, type, category, collateral ratio, and optional launch automation.
+                      The create page is a two-step form for name, description, amount, members, type, category, collateral ratio, and final review before submission.
                     </p>
                     <div className="mt-4 flex flex-wrap gap-2">
                       <RoutePill to="/circles/create" label="Create Circle" />
@@ -988,21 +997,21 @@ export function SdkPage() {
               <HelpSection
                 id="automation"
                 eyebrow="Funding Automation"
-                title="Launch Automation And In-Circle Funding"
-                description="This is where CircleSave becomes more than a plain savings-circle app. The current build pushes StarkZap into circle creation and circle participation instead of leaving it as isolated demo pages."
+                title="Standalone Automation And In-Circle Funding"
+                description="This is where CircleSave becomes more than a plain savings-circle app. The current build keeps StarkZap automation in the dedicated workspaces and inside circle participation flows instead of bundling it into circle creation."
                 color="#FFE66D"
                 icon={Sparkles}
               >
                 <div className="grid gap-4 lg:grid-cols-2">
                   <div className={helpCardClass}>
-                    <p className={helpKickerClass}>Launch Bundle</p>
-                    <h3 className={cn(helpTitleClass, 'text-2xl')}>Create Circle + DCA</h3>
+                    <p className={helpKickerClass}>DCA Workspace</p>
+                    <h3 className={cn(helpTitleClass, 'text-2xl')}>Recurring STRK Plan</h3>
                     <p className={helpBodyClass}>
-                      The review step of circle creation can submit the new circle and a recurring STRK DCA plan together. The user chooses sell token, total budget, per-cycle amount, frequency, provider, and execution mode.
+                      Recurring DCA orders are created from the dedicated DCA page. The user chooses sell token, total budget, per-cycle amount, frequency, provider, and execution mode there.
                     </p>
                     <div className="mt-4 flex flex-wrap gap-2">
-                      <RoutePill to="/circles/create" label="Launch Bundle" />
-                      <FilePill path="src/pages/CreateCirclePage.tsx" />
+                      <RoutePill to="/dca" label="Open DCA" />
+                      <FilePill path="src/pages/DcaPage.tsx" />
                       <FilePill path="src/hooks/useStarkZapActions.ts" />
                     </div>
                   </div>
@@ -1155,7 +1164,7 @@ export function SdkPage() {
                           'AVNU and Ekubo provider selection.',
                           'Live order refresh and provider filtering.',
                           'On-page cancellation through StarkZap cancel flow.',
-                          'Circle launch automation and in-circle DCA setup reuse the same underlying DCA create action.',
+                          'Standalone DCA setup and in-circle DCA setup reuse the same underlying DCA create action.',
                         ]}
                       />
                     </div>

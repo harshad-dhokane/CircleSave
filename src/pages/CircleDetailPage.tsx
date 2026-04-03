@@ -33,6 +33,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import {
+  CircleType,
   formatAmount,
   formatAddress,
   getCategoryColor,
@@ -194,10 +195,12 @@ export function CircleDetailPage() {
   const categoryColor = getCategoryColor(circle.category);
   const categoryLabel = getCategoryLabel(circle.category);
   const circleTypeLabel = getCircleTypeLabel(circle.circleType);
-  const isApprovalRequired = circle.circleType === 1;
+  const isOpenCircle = circle.circleType === CircleType.OPEN;
+  const isApprovalRequired = circle.circleType === CircleType.APPROVAL_REQUIRED;
+  const isInviteOnly = circle.circleType === CircleType.INVITE_ONLY;
   const readyToStart = isCircleReadyToStart(circle);
 
-  const canJoinDirect = !isCreator && !isMember && circle.status === 'PENDING' && spotsLeft > 0 && !isApprovalRequired;
+  const canJoinDirect = !isCreator && !isMember && circle.status === 'PENDING' && spotsLeft > 0 && isOpenCircle;
   const canRequestJoin = !isCreator && !isMember && circle.status === 'PENDING' && spotsLeft > 0 && isApprovalRequired && !hasPendingRequest;
   const canContribute = isMember && circle.status === 'ACTIVE';
   const canStart = isCreator && readyToStart;
@@ -257,6 +260,14 @@ export function CircleDetailPage() {
         label: 'Approval needed',
         title: 'Send a join request',
         body: 'This circle requires creator approval. Add a short note so the owner understands why you want to join.',
+      };
+    }
+
+    if (isInviteOnly && !isCreator && !isMember) {
+      return {
+        label: 'Invite only',
+        title: 'Owner-managed access',
+        body: 'This circle is invite-only. Public joins are disabled in the current app build, so only the owner can manage membership for now.',
       };
     }
 
@@ -563,7 +574,7 @@ export function CircleDetailPage() {
                 },
                 {
                   label: 'Pending circles',
-                  description: 'Pending circles are still filling member slots. Approval circles collect requests first. Once full, the owner starts the first round.',
+                  description: 'Pending circles are still filling member slots. Approval circles collect requests first, while invite-only circles stay owner-managed until invite support is added.',
                 },
                 {
                   label: 'Active circles',

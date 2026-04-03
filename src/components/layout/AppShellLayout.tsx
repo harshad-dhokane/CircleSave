@@ -245,7 +245,7 @@ export function AppShellLayout() {
         title: notice.circleName,
         detail: `${formatAddress(notice.memberAddress)} joined`,
       })),
-      empty: 'Open circles will show newly joined members here.',
+      empty: 'Managed circles will show newly joined members here.',
     },
   ], [
     markMemberJoinNoticesSeen,

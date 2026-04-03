@@ -28,7 +28,7 @@ export function CircleMemberJoinPanel({
   isLoading = false,
   compact = false,
   emptyTitle = 'No new joins',
-  emptyDescription = 'When someone joins one of your open circles, the update will show up here.',
+  emptyDescription = 'When someone joins one of your managed circles, the update will show up here.',
   className,
 }: CircleMemberJoinPanelProps) {
   if (isLoading) {
@@ -88,7 +88,7 @@ export function CircleMemberJoinPanel({
           <div className={cn('mt-3 rounded-[20px] border border-black/10 bg-black/[0.03] dark:bg-white/6', compact ? 'p-3' : 'p-4')}>
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Join update</p>
             <p className={cn('mt-2 leading-relaxed text-foreground/80', compact ? 'text-sm' : 'text-[15px]')}>
-              {formatAddress(notice.memberAddress)} has joined this open circle.
+              {formatAddress(notice.memberAddress)} has joined this circle.
             </p>
             <p className="mt-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
               {formatJoinedAt(notice.joinedAt)}
