@@ -11,6 +11,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { HowItWorks } from '@/sections/HowItWorks';
 import { Leaderboard } from '@/sections/Leaderboard';
+import { cn } from '@/lib/utils';
 
 const VOYAGER_CONTRACT_BASE = 'https://sepolia.voyager.online/contract/';
 
@@ -51,57 +52,113 @@ const deploymentManifest = {
   ],
 } as const;
 
+const accentClasses = {
+  lime: 'border-[#B5F36B]/24 bg-[#B5F36B]/14 text-foreground',
+  amber: 'border-[#FFB457]/24 bg-[#FFB457]/16 text-foreground',
+  sky: 'border-[#7CC8FF]/24 bg-[#7CC8FF]/14 text-foreground',
+  violet: 'border-[#A48DFF]/24 bg-[#A48DFF]/16 text-foreground',
+  mint: 'border-[#7AE7C7]/24 bg-[#7AE7C7]/14 text-foreground',
+  rose: 'border-[#FF7B72]/24 bg-[#FF7B72]/16 text-foreground',
+} as const;
+
+type AccentTone = keyof typeof accentClasses;
+
 type HeaderProps = {
   eyebrow: string;
   title: string;
   description: string;
-  accentClassName: string;
+  tone: AccentTone;
   actions?: ReactNode;
 };
 
+function AccentBadge({
+  tone,
+  className,
+  children,
+}: {
+  tone: AccentTone;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]',
+        accentClasses[tone],
+        className,
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
 function InfoPageHeader(props: HeaderProps) {
   return (
-    <div className="content-divider-bottom border-b-[2px] border-black bg-white">
-      <div className="page-shell py-8 md:py-9">
-        <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
-          <div>
-            <div className={`mb-3 inline-flex items-center gap-2 border-[2px] border-black px-3 py-1.5 text-sm font-black uppercase tracking-[0.08em] ${props.accentClassName}`}>
-              {props.eyebrow}
-            </div>
-            <h1 className="mb-2 text-4xl font-black md:text-5xl">{props.title}</h1>
-            <p className="max-w-3xl text-[15px] leading-relaxed text-black/70 md:text-base">
-              {props.description}
-            </p>
-          </div>
-          {props.actions ? <div className="flex flex-wrap gap-3">{props.actions}</div> : null}
+    <section className="neo-panel p-5 md:p-6">
+      <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+        <div className="min-w-0">
+          <AccentBadge tone={props.tone}>{props.eyebrow}</AccentBadge>
+          <h1 className="mt-3 font-display text-[1.9rem] font-semibold tracking-[-0.05em] text-foreground md:text-[2.35rem]">
+            {props.title}
+          </h1>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+            {props.description}
+          </p>
         </div>
+        {props.actions ? <div className="flex flex-wrap gap-3">{props.actions}</div> : null}
       </div>
-    </div>
+    </section>
   );
 }
 
 function PolicySection(props: { title: string; body: string }) {
   return (
-    <div className="border-[3px] border-black bg-white p-6 shadow-[4px_4px_0px_0px_#1a1a1a]">
-      <h2 className="mb-3 text-2xl font-black">{props.title}</h2>
-      <p className="text-[15px] leading-relaxed text-black/70">{props.body}</p>
-    </div>
+    <article className="rounded-[20px] border border-black/10 bg-black/[0.03] p-5 shadow-[0_18px_46px_-32px_rgba(15,23,42,0.18)] dark:border-white/10 dark:bg-white/5 dark:shadow-[0_22px_56px_-34px_rgba(0,0,0,0.78)]">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+        Policy
+      </p>
+      <h2 className="mt-2 font-display text-[1.25rem] font-semibold tracking-[-0.04em] text-foreground">
+        {props.title}
+      </h2>
+      <p className="mt-3 text-sm leading-6 text-muted-foreground">
+        {props.body}
+      </p>
+    </article>
+  );
+}
+
+function RouteLinkCard({
+  to,
+  label,
+}: {
+  to: string;
+  label: string;
+}) {
+  return (
+    <Link
+      to={to}
+      className="flex items-center justify-between gap-3 rounded-[18px] border border-black/10 bg-black/[0.03] px-4 py-3 text-sm font-semibold text-foreground transition duration-200 hover:-translate-y-0.5 hover:bg-black/[0.05] dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/8"
+    >
+      <span>{label}</span>
+      <ArrowRight className="h-4 w-4 text-muted-foreground" />
+    </Link>
   );
 }
 
 export function LeaderboardPage() {
   return (
-    <div className="min-h-screen bg-[#FEFAE0]">
+    <div className="space-y-4 pb-4">
       <InfoPageHeader
-        eyebrow="Community Stats"
+        eyebrow="Community"
         title="Leaderboard"
-        description="Track the highest reputation wallets in CircleSave and see who is building the strongest on-chain circle history."
-        accentClassName="bg-[#FFE66D]"
-        actions={
-          <Link to="/dashboard">
-            <Button className="neo-button-primary">Open Dashboard</Button>
-          </Link>
-        }
+        description="Track the strongest reputation wallets in CircleSave and see who is building the deepest on-chain circle history."
+        tone="sky"
+        actions={(
+          <Button asChild>
+            <Link to="/dashboard">Open Dashboard</Link>
+          </Button>
+        )}
       />
       <Leaderboard />
     </div>
@@ -110,27 +167,25 @@ export function LeaderboardPage() {
 
 export function HowItWorksPage() {
   return (
-    <div className="min-h-screen bg-[#FEFAE0]">
+    <div className="space-y-4 pb-4">
       <InfoPageHeader
         eyebrow="Product Flow"
         title="How CircleSave Works"
-        description="Connect once, join or create circles, use StarkZap-powered actions from the same wallet, and keep every move visible in your dashboard and logs."
-        accentClassName="bg-[#4ECDC4] text-white"
-        actions={
+        description="Connect once, join or create circles, use StarkZap-powered actions from the same wallet session, and keep every move visible in the dashboard and logs."
+        tone="mint"
+        actions={(
           <>
-            <Link to="/circles">
-              <Button className="neo-button-primary">
+            <Button asChild>
+              <Link to="/circles">
                 Explore Circles
-                <ArrowRight className="ml-2 h-5 w-5" />
-              </Button>
-            </Link>
-            <Link to="/swap">
-              <Button variant="outline" className="border-[2px] border-black font-black">
-                Open Swap
-              </Button>
-            </Link>
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link to="/swap">Open Swap</Link>
+            </Button>
           </>
-        }
+        )}
       />
       <HowItWorks />
     </div>
@@ -139,140 +194,163 @@ export function HowItWorksPage() {
 
 export function ContractsPage() {
   return (
-    <div className="min-h-screen bg-[#FEFAE0]">
+    <div className="space-y-4 pb-4">
       <InfoPageHeader
         eyebrow="On-Chain"
         title="Smart Contracts"
-        description="CircleSave runs on Starknet Sepolia with a deployed circle factory, collateral manager, and reputation system. These are the current live addresses used by the app."
-        accentClassName="bg-[#FF6B6B] text-white"
-        actions={
-          <Link to="/help">
-            <Button className="neo-button-primary">
-              Open Help Center
-              <ArrowRight className="ml-2 h-5 w-5" />
-            </Button>
-          </Link>
-        }
+        description="CircleSave runs on Starknet Sepolia with a deployed circle factory, collateral manager, and reputation system. These are the live addresses used by the app."
+        tone="amber"
+        actions={(
+          <Button variant="outline" asChild>
+            <Link to="/help">Open Help Center</Link>
+          </Button>
+        )}
       />
 
-      <div className="page-shell space-y-8 py-8 md:py-10">
-        <section className="grid gap-4 md:grid-cols-3">
-          {deploymentManifest.contracts.map((contract) => (
-            <a
-              key={contract.name}
-              href={`${VOYAGER_CONTRACT_BASE}${contract.value}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="block border-[3px] border-black bg-white p-6 shadow-[4px_4px_0px_0px_#1a1a1a] transition-all hover:-translate-x-1 hover:-translate-y-1 hover:shadow-[7px_7px_0px_0px_#1a1a1a]"
-            >
-              <div className="mb-4 flex items-center justify-between gap-4">
-                <div className="inline-flex items-center gap-2 border-[2px] border-black bg-[#FFE66D] px-3 py-1.5 text-xs font-black uppercase tracking-[0.08em]">
-                  Live Contract
-                </div>
-                <ExternalLink className="h-5 w-5" />
-              </div>
-              <h2 className="mb-3 text-2xl font-black">{contract.name}</h2>
-              <p className="break-all font-mono text-sm text-black/70">{contract.value}</p>
-            </a>
-          ))}
-        </section>
+      <section className="grid gap-4 xl:grid-cols-3">
+        {deploymentManifest.contracts.map((contract) => (
+          <a
+            key={contract.name}
+            href={`${VOYAGER_CONTRACT_BASE}${contract.value}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group rounded-[20px] border border-black/10 bg-black/[0.03] p-5 transition duration-200 hover:-translate-y-0.5 hover:bg-black/[0.05] dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/8"
+          >
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <AccentBadge tone="lime">Live Contract</AccentBadge>
+              <ExternalLink className="h-4.5 w-4.5 shrink-0 text-muted-foreground transition group-hover:text-foreground" />
+            </div>
+            <h2 className="font-display text-[1.25rem] font-semibold tracking-[-0.04em] text-foreground">
+              {contract.name}
+            </h2>
+            <p className="mt-3 break-all font-mono text-sm leading-6 text-muted-foreground">
+              {contract.value}
+            </p>
+            <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+              Open in Voyager
+            </p>
+          </a>
+        ))}
+      </section>
 
-        <section className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-          <div className="border-[3px] border-black bg-white p-6 shadow-[4px_4px_0px_0px_#1a1a1a]">
-            <div className="mb-4 inline-flex items-center gap-2 border-[2px] border-black bg-[#4ECDC4] px-3 py-1.5 text-xs font-black uppercase tracking-[0.08em] text-white">
-              <BookOpen className="h-4 w-4" />
+      <section className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+        <div className="neo-panel p-5 md:p-6">
+          <div className="flex flex-wrap items-center gap-3">
+            <AccentBadge tone="mint">
+              <BookOpen className="h-3.5 w-3.5" />
               Deployment Metadata
+            </AccentBadge>
+          </div>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-[18px] border border-black/10 bg-black/[0.03] px-4 py-4 dark:border-white/10 dark:bg-white/5">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                Deployed At
+              </p>
+              <p className="mt-2 text-sm font-semibold text-foreground">
+                {new Date(deploymentManifest.deployedAt).toLocaleString()}
+              </p>
             </div>
-            <div className="space-y-3 text-[15px]">
-              <p><span className="font-black">Deployed At:</span> {new Date(deploymentManifest.deployedAt).toLocaleString()}</p>
-              <p className="break-all"><span className="font-black">RPC:</span> {deploymentManifest.rpcUrl}</p>
+            <div className="rounded-[18px] border border-black/10 bg-black/[0.03] px-4 py-4 dark:border-white/10 dark:bg-white/5">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                RPC Endpoint
+              </p>
+              <p className="mt-2 break-all text-sm font-semibold text-foreground">
+                {deploymentManifest.rpcUrl}
+              </p>
             </div>
           </div>
+        </div>
 
-          <div className="border-[3px] border-black bg-white p-6 shadow-[4px_4px_0px_0px_#1a1a1a]">
-            <div className="mb-4 inline-flex items-center gap-2 border-[2px] border-black bg-[#DDA0DD] px-3 py-1.5 text-xs font-black uppercase tracking-[0.08em]">
-              <FileCode2 className="h-4 w-4" />
+        <div className="neo-panel p-5 md:p-6">
+          <div className="flex flex-wrap items-center gap-3">
+            <AccentBadge tone="violet">
+              <FileCode2 className="h-3.5 w-3.5" />
               Class Hashes
-            </div>
-            <div className="space-y-3">
-              {deploymentManifest.classHashes.map((item) => (
-                <div key={item.name}>
-                  <p className="font-black">{item.name}</p>
-                  <p className="break-all font-mono text-sm text-black/70">{item.value}</p>
-                </div>
-              ))}
-            </div>
+            </AccentBadge>
           </div>
-        </section>
-      </div>
+          <div className="mt-5 space-y-3">
+            {deploymentManifest.classHashes.map((item) => (
+              <div
+                key={item.name}
+                className="rounded-[18px] border border-black/10 bg-black/[0.03] px-4 py-4 dark:border-white/10 dark:bg-white/5"
+              >
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  {item.name}
+                </p>
+                <p className="mt-2 break-all font-mono text-sm leading-6 text-foreground">
+                  {item.value}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
     </div>
   );
 }
 
 export function ApiPage() {
   return (
-    <div className="min-h-screen bg-[#FEFAE0]">
+    <div className="space-y-4 pb-4">
       <InfoPageHeader
         eyebrow="Integration"
         title="API & App Architecture"
         description="CircleSave does not expose a separate public backend REST API. The app is driven by Starknet contracts, StarkZap v2 providers, and wallet-signed on-chain actions."
-        accentClassName="bg-[#DDA0DD]"
-        actions={
+        tone="violet"
+        actions={(
           <>
-            <Link to="/swap">
-              <Button className="neo-button-primary">Open Swap</Button>
-            </Link>
-            <Link to="/logs">
-              <Button variant="outline" className="border-[2px] border-black font-black">
-                View Logs
-              </Button>
-            </Link>
+            <Button asChild>
+              <Link to="/swap">Open Swap</Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link to="/logs">View Logs</Link>
+            </Button>
           </>
-        }
+        )}
       />
 
-      <div className="page-shell grid gap-6 py-8 md:grid-cols-2 md:py-10">
-        <div className="border-[3px] border-black bg-white p-6 shadow-[4px_4px_0px_0px_#1a1a1a]">
-          <div className="mb-4 inline-flex items-center gap-2 border-[2px] border-black bg-[#FFE66D] px-3 py-1.5 text-xs font-black uppercase tracking-[0.08em]">
-            <Network className="h-4 w-4" />
+      <section className="grid gap-4 lg:grid-cols-2">
+        <div className="neo-panel p-5 md:p-6">
+          <AccentBadge tone="amber">
+            <Network className="h-3.5 w-3.5" />
             What Powers The App
-          </div>
-          <div className="space-y-3 text-[15px] leading-relaxed text-black/70">
+          </AccentBadge>
+          <div className="mt-5 space-y-3 text-sm leading-6 text-muted-foreground">
             <p>Circle creation, contributions, collateral, and reputation are handled by Starknet smart contracts.</p>
-            <p>Swap and DCA flows are powered through StarkZap v2 provider integrations and executed by the user&apos;s connected wallet.</p>
+            <p>Swap and DCA flows run through StarkZap v2 provider integrations and execute from the user&apos;s connected wallet.</p>
             <p>Logs and dashboard activity are contract-backed views built from public factory, circle, collateral, and reputation events.</p>
           </div>
         </div>
 
-        <div className="border-[3px] border-black bg-white p-6 shadow-[4px_4px_0px_0px_#1a1a1a]">
-          <div className="mb-4 inline-flex items-center gap-2 border-[2px] border-black bg-[#4ECDC4] px-3 py-1.5 text-xs font-black uppercase tracking-[0.08em] text-white">
-            <ScrollText className="h-4 w-4" />
+        <div className="neo-panel p-5 md:p-6">
+          <AccentBadge tone="sky">
+            <ScrollText className="h-3.5 w-3.5" />
             Useful Product Routes
-          </div>
-          <div className="grid gap-3 text-sm font-black uppercase tracking-[0.08em]">
-            <Link to="/help" className="border-[2px] border-black bg-[#FEFAE0] px-4 py-3 hover:bg-[#FFE66D]">Help Center</Link>
-            <Link to="/circles" className="border-[2px] border-black bg-[#FEFAE0] px-4 py-3 hover:bg-[#FFE66D]">Discover Circles</Link>
-            <Link to="/swap" className="border-[2px] border-black bg-[#FEFAE0] px-4 py-3 hover:bg-[#FFE66D]">Swap</Link>
-            <Link to="/dca" className="border-[2px] border-black bg-[#FEFAE0] px-4 py-3 hover:bg-[#FFE66D]">DCA</Link>
-            <Link to="/lending" className="border-[2px] border-black bg-[#FEFAE0] px-4 py-3 hover:bg-[#FFE66D]">Lending</Link>
-            <Link to="/logs" className="border-[2px] border-black bg-[#FEFAE0] px-4 py-3 hover:bg-[#FFE66D]">Logs</Link>
+          </AccentBadge>
+          <div className="mt-5 grid gap-3">
+            <RouteLinkCard to="/help" label="Help Center" />
+            <RouteLinkCard to="/circles" label="Discover Circles" />
+            <RouteLinkCard to="/swap" label="Swap" />
+            <RouteLinkCard to="/dca" label="DCA" />
+            <RouteLinkCard to="/lending" label="Lending" />
+            <RouteLinkCard to="/logs" label="Logs" />
           </div>
         </div>
-      </div>
+      </section>
     </div>
   );
 }
 
 export function TermsPage() {
   return (
-    <div className="min-h-screen bg-[#FEFAE0]">
+    <div className="space-y-4 pb-4">
       <InfoPageHeader
         eyebrow="Legal"
         title="Terms of Service"
         description="CircleSave is a prototype experience for exploring savings circles and StarkZap-enabled Starknet actions. Use of the app is subject to the limitations described below."
-        accentClassName="bg-[#FF6B6B] text-white"
+        tone="rose"
       />
-      <div className="page-shell grid gap-6 py-8 md:py-10">
+      <section className="grid gap-4 lg:grid-cols-3">
         <PolicySection
           title="Prototype Use"
           body="CircleSave is provided as an experimental application. Features, interfaces, routes, and on-chain flows may change, be interrupted, or be removed without notice."
@@ -285,21 +363,21 @@ export function TermsPage() {
           title="No Guarantee"
           body="The app does not guarantee uptime, successful transactions, liquidity availability, or uninterrupted access to Starknet, StarkZap providers, or third-party RPC services."
         />
-      </div>
+      </section>
     </div>
   );
 }
 
 export function PrivacyPage() {
   return (
-    <div className="min-h-screen bg-[#FEFAE0]">
+    <div className="space-y-4 pb-4">
       <InfoPageHeader
         eyebrow="Legal"
         title="Privacy Policy"
         description="CircleSave is designed around wallet-based access and on-chain transparency. This page explains the limited app-level data the interface may surface."
-        accentClassName="bg-[#4ECDC4] text-white"
+        tone="sky"
       />
-      <div className="page-shell grid gap-6 py-8 md:py-10">
+      <section className="grid gap-4 lg:grid-cols-3">
         <PolicySection
           title="Wallet Data"
           body="The app reads wallet addresses, token balances, connected account state, and on-chain transaction information needed to show dashboard details, logs, and product actions."
@@ -312,21 +390,21 @@ export function PrivacyPage() {
           title="No Custody"
           body="CircleSave does not custody user funds. Transactions are signed by the connected wallet, and asset movement is controlled by the user and the relevant smart contracts."
         />
-      </div>
+      </section>
     </div>
   );
 }
 
 export function RiskDisclosurePage() {
   return (
-    <div className="min-h-screen bg-[#FEFAE0]">
+    <div className="space-y-4 pb-4">
       <InfoPageHeader
         eyebrow="Legal"
         title="Risk Disclosure"
         description="Using CircleSave involves smart-contract, wallet, liquidity, and testnet risks. Review these points before using swap, DCA, lending, or savings-circle flows."
-        accentClassName="bg-[#FFE66D]"
+        tone="amber"
       />
-      <div className="page-shell grid gap-6 py-8 md:py-10">
+      <section className="grid gap-4 lg:grid-cols-3">
         <PolicySection
           title="Smart Contract Risk"
           body="CircleSave and connected protocol integrations rely on smart contracts. Bugs, unexpected edge cases, or third-party integration failures can affect outcomes or transaction success."
@@ -339,7 +417,7 @@ export function RiskDisclosurePage() {
           title="Testnet Conditions"
           body="This build currently runs on Starknet Sepolia. Testnet assets may be faucet-funded, unstable, or non-representative of mainnet conditions, and infrastructure can be unreliable."
         />
-      </div>
+      </section>
     </div>
   );
 }

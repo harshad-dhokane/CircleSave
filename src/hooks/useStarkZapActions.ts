@@ -1,11 +1,7 @@
 import { useAccount, useProvider } from '@starknet-react/core';
 import { useCallback } from 'react';
+import type { AccountInterface, ProviderInterface } from 'starknet';
 import { toast } from 'sonner';
-import {
-  appendStarkZapLog,
-  updateStarkZapLog,
-  type StarkZapLogDetails,
-} from '@/lib/starkzapLogs';
 import {
   Amount,
   ChainId,
@@ -20,6 +16,8 @@ import {
   buildJoinCircleCall,
 } from '@/lib/circleCalls';
 import { CONTRACTS } from '@/lib/constants';
+import { buildStarkZapActivityCall } from '@/lib/starkzapActivityRegistry';
+import { saveSubmittedStarkZapActivity } from '@/lib/starkzapSubmittedActivity';
 
 export type StarkZapTokenKey = 'ETH' | 'USDC' | 'STRK';
 export type StarkZapDcaFrequency = 'PT12H' | 'P1D' | 'P1W';
@@ -252,6 +250,29 @@ function getDcaProviderLabel(providerId: StarkZapDcaProviderId) {
   return providerId === 'ekubo' ? 'Ekubo' : 'AVNU';
 }
 
+function getTrackedProviderLabel(providerId: string) {
+  switch (providerId.toLowerCase()) {
+    case 'avnu':
+      return 'AVNU';
+    case 'ekubo':
+      return 'Ekubo';
+    case 'vesu':
+      return 'Vesu';
+    case 'txbuilder':
+      return 'TxBuilder';
+    case 'circlesave':
+      return 'CircleSave';
+    case 'starkzap':
+      return 'StarkZap';
+    default:
+      return providerId;
+  }
+}
+
+function toRawTokenAmount(token: StarkZapTokenKey, amount: string) {
+  return Amount.parse(amount, sepoliaTokens[token]).toBase();
+}
+
 function toExecutionOptions(feeMode?: StarkZapExecutionMode) {
   if (!feeMode || feeMode === 'user_pays') {
     return undefined;
@@ -335,9 +356,9 @@ export function useStarkZapActions() {
     }
 
     return createConnectedStarkZapWallet({
-      account: account as any,
+      account: account as AccountInterface,
       address,
-      provider: provider as any,
+      provider: provider as ProviderInterface,
       chainId: ChainId.SEPOLIA,
       defaultFeeMode: normalizeExecutionMode(defaultFeeMode),
     });
@@ -349,35 +370,35 @@ export function useStarkZapActions() {
     kind: 'swap' | 'dca' | 'lending' | 'staking' | 'batch';
     providerId: string;
     transactionHash: string;
-    details?: StarkZapLogDetails;
   }): Promise<StarkZapTxView> => {
     if (!address) {
       throw new Error('Connect your wallet first.');
     }
 
-    const tx = new Tx(params.transactionHash, provider as any, ChainId.SEPOLIA);
+    const submittedAt = new Date().toISOString();
+    const tx = new Tx(
+      params.transactionHash,
+      provider as unknown as ConstructorParameters<typeof Tx>[1],
+      ChainId.SEPOLIA,
+    );
 
-    const logEntry = appendStarkZapLog({
+    saveSubmittedStarkZapActivity({
+      id: `submitted:${params.kind}:${params.transactionHash.toLowerCase()}`,
       kind: params.kind,
       title: params.title,
       summary: params.summary,
       account: address,
-      provider: params.providerId,
+      provider: getTrackedProviderLabel(params.providerId),
       txHash: params.transactionHash,
-      explorerUrl: tx.explorerUrl,
-      details: params.details,
+      createdAt: submittedAt,
+      updatedAt: submittedAt,
     });
 
     void (async () => {
       try {
         await tx.wait();
-        updateStarkZapLog(logEntry.id, { status: 'confirmed' });
         toast.success(`${params.title} confirmed`);
-      } catch (error) {
-        updateStarkZapLog(logEntry.id, {
-          status: 'failed',
-          error: error instanceof Error ? error.message : 'Transaction failed',
-        });
+      } catch {
         toast.error(`${params.title} failed`);
       }
     })();
@@ -558,6 +579,22 @@ export function useStarkZapActions() {
         throw new Error(simulation.reason);
       }
 
+      const activityCall = buildStarkZapActivityCall({
+        module: 'batch',
+        action: 'transfer',
+        provider: 'txbuilder',
+        executionMode: executionMode || 'user_pays',
+        count: normalizedItems.length,
+        volumes: breakdown.map((group) => ({
+          token: group.token,
+          amount: toRawTokenAmount(group.token, group.totalAmount),
+        })),
+      });
+
+      if (activityCall) {
+        builder.add(activityCall);
+      }
+
       const tx = await builder.send(toExecutionOptions(executionMode));
       toast.success('Batch transaction submitted');
 
@@ -567,14 +604,6 @@ export function useStarkZapActions() {
         kind: 'batch',
         providerId: 'txbuilder',
         transactionHash: tx.hash,
-        details: {
-          transferCount: normalizedItems.length,
-          batchTransfers: breakdown.map((group) => ({
-            token: group.token,
-            totalAmount: group.totalAmount,
-            transferCount: group.transferCount,
-          })),
-        },
       });
     });
   }, [getWallet, normalizeBatchTransferItems, normalizeExecutionMode, runAction, trackTransaction]);
@@ -713,7 +742,24 @@ export function useStarkZapActions() {
         12000,
         'Swap route preparation',
       );
-      const tx = await wallet.execute(prepared.calls, toExecutionOptions(executionMode));
+      const activityCall = buildStarkZapActivityCall({
+        module: 'swap',
+        action: 'execute',
+        provider: providerId,
+        executionMode: executionMode || 'user_pays',
+        volumes: [
+          {
+            token: params.tokenIn,
+            amount: amountIn.toBase(),
+          },
+          {
+            token: params.tokenOut,
+            amount: prepared.quote.amountOutBase,
+          },
+        ],
+      });
+      const txCalls = activityCall ? [...prepared.calls, activityCall] : prepared.calls;
+      const tx = await wallet.execute(txCalls, toExecutionOptions(executionMode));
       toast.success('Swap submitted');
 
       return trackTransaction({
@@ -722,12 +768,6 @@ export function useStarkZapActions() {
         kind: 'swap',
         providerId,
         transactionHash: tx.hash,
-        details: {
-          inputAmount: params.amount,
-          inputToken: params.tokenIn,
-          outputAmount: Amount.fromRaw(prepared.quote.amountOutBase, tokenOut).toFormatted(true),
-          outputToken: params.tokenOut,
-        },
       });
     });
   }, [buildSwapComparisons, getWallet, normalizeExecutionMode, runAction, trackTransaction]);
@@ -801,7 +841,26 @@ export function useStarkZapActions() {
         12000,
         'DCA order preparation',
       );
-      const tx = await wallet.execute(prepared.calls, toExecutionOptions(executionMode));
+      const activityCall = buildStarkZapActivityCall({
+        module: 'dca',
+        action: 'create',
+        provider: providerId,
+        executionMode: executionMode || 'user_pays',
+        volumes: [
+          {
+            token: params.sellToken,
+            amount: toRawTokenAmount(params.sellToken, params.sellAmount),
+          },
+          {
+            token: params.sellToken,
+            amount: toRawTokenAmount(params.sellToken, params.sellAmountPerCycle),
+          },
+        ],
+        referenceOne: params.buyToken,
+        referenceTwo: params.frequency,
+      });
+      const txCalls = activityCall ? [...prepared.calls, activityCall] : prepared.calls;
+      const tx = await wallet.execute(txCalls, toExecutionOptions(executionMode));
       toast.success('DCA order submitted');
 
       const summarySuffix = params.summaryLabel ? ` for ${params.summaryLabel}` : '';
@@ -811,14 +870,6 @@ export function useStarkZapActions() {
         kind: 'dca',
         providerId,
         transactionHash: tx.hash,
-        details: {
-          totalAmount: params.sellAmount,
-          totalToken: params.sellToken,
-          cycleAmount: params.sellAmountPerCycle,
-          cycleToken: params.sellToken,
-          frequency: params.frequency,
-          outputToken: params.buyToken,
-        },
       });
     });
   }, [getWallet, normalizeExecutionMode, runAction, trackTransaction]);
@@ -898,7 +949,14 @@ export function useStarkZapActions() {
         12000,
         'DCA cancellation preparation',
       );
-      const tx = await wallet.execute(prepared.calls, toExecutionOptions(executionMode));
+      const activityCall = buildStarkZapActivityCall({
+        module: 'dca',
+        action: 'cancel',
+        provider: params.providerId,
+        executionMode: executionMode || 'user_pays',
+      });
+      const txCalls = activityCall ? [...prepared.calls, activityCall] : prepared.calls;
+      const tx = await wallet.execute(txCalls, toExecutionOptions(executionMode));
       toast.success('DCA cancellation submitted');
 
       return trackTransaction({
@@ -1039,7 +1097,15 @@ export function useStarkZapActions() {
         token,
         amount: Amount.parse(params.amount, token),
       });
-      const tx = await wallet.execute(prepared.calls, toExecutionOptions(executionMode));
+      const activityCall = buildStarkZapActivityCall({
+        module: 'lending',
+        action: 'deposit',
+        provider: prepared.providerId,
+        executionMode: executionMode || 'user_pays',
+        volumes: [{ token: params.token, amount: toRawTokenAmount(params.token, params.amount) }],
+      });
+      const txCalls = activityCall ? [...prepared.calls, activityCall] : prepared.calls;
+      const tx = await wallet.execute(txCalls, toExecutionOptions(executionMode));
       toast.success('Lending deposit submitted');
 
       return trackTransaction({
@@ -1048,11 +1114,6 @@ export function useStarkZapActions() {
         kind: 'lending',
         providerId: prepared.providerId,
         transactionHash: tx.hash,
-        details: {
-          action: 'deposit',
-          inputAmount: params.amount,
-          inputToken: params.token,
-        },
       });
     });
   }, [getWallet, normalizeExecutionMode, runAction, trackTransaction]);
@@ -1070,7 +1131,15 @@ export function useStarkZapActions() {
         token,
         amount: Amount.parse(params.amount, token),
       });
-      const tx = await wallet.execute(prepared.calls, toExecutionOptions(executionMode));
+      const activityCall = buildStarkZapActivityCall({
+        module: 'lending',
+        action: 'withdraw',
+        provider: prepared.providerId,
+        executionMode: executionMode || 'user_pays',
+        volumes: [{ token: params.token, amount: toRawTokenAmount(params.token, params.amount) }],
+      });
+      const txCalls = activityCall ? [...prepared.calls, activityCall] : prepared.calls;
+      const tx = await wallet.execute(txCalls, toExecutionOptions(executionMode));
       toast.success('Lending withdrawal submitted');
 
       return trackTransaction({
@@ -1079,11 +1148,6 @@ export function useStarkZapActions() {
         kind: 'lending',
         providerId: prepared.providerId,
         transactionHash: tx.hash,
-        details: {
-          action: 'withdraw',
-          inputAmount: params.amount,
-          inputToken: params.token,
-        },
       });
     });
   }, [getWallet, normalizeExecutionMode, runAction, trackTransaction]);
@@ -1099,7 +1163,15 @@ export function useStarkZapActions() {
       const prepared = await wallet.lending().prepareWithdrawMax({
         token,
       });
-      const tx = await wallet.execute(prepared.calls, toExecutionOptions(executionMode));
+      const activityCall = buildStarkZapActivityCall({
+        module: 'lending',
+        action: 'withdraw_max',
+        provider: prepared.providerId,
+        executionMode: executionMode || 'user_pays',
+        referenceOne: params.token,
+      });
+      const txCalls = activityCall ? [...prepared.calls, activityCall] : prepared.calls;
+      const tx = await wallet.execute(txCalls, toExecutionOptions(executionMode));
       toast.success('Max withdrawal submitted');
 
       return trackTransaction({
@@ -1108,10 +1180,6 @@ export function useStarkZapActions() {
         kind: 'lending',
         providerId: prepared.providerId,
         transactionHash: tx.hash,
-        details: {
-          action: 'withdraw',
-          inputToken: params.token,
-        },
       });
     });
   }, [getWallet, normalizeExecutionMode, runAction, trackTransaction]);
@@ -1136,7 +1204,16 @@ export function useStarkZapActions() {
         debtToken,
         amount: Amount.parse(params.amount, debtToken),
       });
-      const tx = await wallet.execute(prepared.calls, toExecutionOptions(executionMode));
+      const activityCall = buildStarkZapActivityCall({
+        module: 'lending',
+        action: 'borrow',
+        provider: prepared.providerId,
+        executionMode: executionMode || 'user_pays',
+        volumes: [{ token: params.debtToken, amount: toRawTokenAmount(params.debtToken, params.amount) }],
+        referenceOne: params.collateralToken,
+      });
+      const txCalls = activityCall ? [...prepared.calls, activityCall] : prepared.calls;
+      const tx = await wallet.execute(txCalls, toExecutionOptions(executionMode));
       toast.success('Borrow submitted');
 
       return trackTransaction({
@@ -1145,11 +1222,6 @@ export function useStarkZapActions() {
         kind: 'lending',
         providerId: prepared.providerId,
         transactionHash: tx.hash,
-        details: {
-          action: 'borrow',
-          inputAmount: params.amount,
-          inputToken: params.debtToken,
-        },
       });
     });
   }, [getWallet, normalizeExecutionMode, runAction, trackTransaction]);
@@ -1174,7 +1246,16 @@ export function useStarkZapActions() {
         debtToken,
         amount: Amount.parse(params.amount, debtToken),
       });
-      const tx = await wallet.execute(prepared.calls, toExecutionOptions(executionMode));
+      const activityCall = buildStarkZapActivityCall({
+        module: 'lending',
+        action: 'repay',
+        provider: prepared.providerId,
+        executionMode: executionMode || 'user_pays',
+        volumes: [{ token: params.debtToken, amount: toRawTokenAmount(params.debtToken, params.amount) }],
+        referenceOne: params.collateralToken,
+      });
+      const txCalls = activityCall ? [...prepared.calls, activityCall] : prepared.calls;
+      const tx = await wallet.execute(txCalls, toExecutionOptions(executionMode));
       toast.success('Repay submitted');
 
       return trackTransaction({
@@ -1183,11 +1264,6 @@ export function useStarkZapActions() {
         kind: 'lending',
         providerId: prepared.providerId,
         transactionHash: tx.hash,
-        details: {
-          action: 'repay',
-          inputAmount: params.amount,
-          inputToken: params.debtToken,
-        },
       });
     });
   }, [getWallet, normalizeExecutionMode, runAction, trackTransaction]);
@@ -1234,6 +1310,28 @@ export function useStarkZapActions() {
         throw new Error(simulation.reason);
       }
 
+      const activityCall = buildStarkZapActivityCall({
+        module: 'swap',
+        action: params.action,
+        provider: providerId,
+        executionMode: executionMode || 'user_pays',
+        volumes: [
+          {
+            token: params.sourceToken,
+            amount: toRawTokenAmount(params.sourceToken, params.sourceAmount),
+          },
+          {
+            token: 'STRK',
+            amount: params.requiredStrkAmount,
+          },
+        ],
+        referenceOne: params.action,
+      });
+
+      if (activityCall) {
+        builder.add(activityCall);
+      }
+
       const tx = await builder.send(toExecutionOptions(executionMode));
       toast.success(`${params.action === 'join' ? 'Join' : 'Contribution'} strategy submitted`);
 
@@ -1243,11 +1341,6 @@ export function useStarkZapActions() {
         kind: 'swap',
         providerId,
         transactionHash: tx.hash,
-        details: {
-          inputAmount: params.sourceAmount,
-          inputToken: params.sourceToken,
-          outputToken: 'STRK',
-        },
       });
     });
   }, [buildSwapComparisons, getWallet, normalizeExecutionMode, runAction, trackTransaction]);
@@ -1335,6 +1428,22 @@ export function useStarkZapActions() {
         throw new Error(simulation.reason);
       }
 
+      const lendingVolumes = params.sourceAmount
+        ? [{ token: params.sourceToken, amount: toRawTokenAmount(params.sourceToken, params.sourceAmount) }]
+        : undefined;
+      const activityCall = buildStarkZapActivityCall({
+        module: 'lending',
+        action: params.lendingAction,
+        provider: 'vesu',
+        executionMode: executionMode || 'user_pays',
+        volumes: lendingVolumes,
+        referenceOne: params.action,
+      });
+
+      if (activityCall) {
+        builder.add(activityCall);
+      }
+
       const tx = await builder.send(toExecutionOptions(executionMode));
       toast.success(`${params.lendingAction === 'borrow' ? 'Borrow' : 'Lending'} strategy submitted`);
 
@@ -1351,12 +1460,6 @@ export function useStarkZapActions() {
         kind: 'lending',
         providerId: 'vesu',
         transactionHash: tx.hash,
-        details: {
-          action: params.lendingAction === 'borrow' ? 'borrow' : 'withdraw',
-          inputAmount: params.sourceAmount,
-          inputToken: params.sourceToken,
-          outputToken: 'STRK',
-        },
       });
     });
   }, [getWallet, normalizeExecutionMode, runAction, trackTransaction]);
@@ -1410,6 +1513,31 @@ export function useStarkZapActions() {
         throw new Error(simulation.reason);
       }
 
+      if (automationEnabled && params.automation) {
+        const activityCall = buildStarkZapActivityCall({
+          module: 'dca',
+          action: 'launch',
+          provider: params.automation.providerId || 'avnu',
+          executionMode: executionMode || 'user_pays',
+          volumes: [
+            {
+              token: params.automation.sellToken,
+              amount: toRawTokenAmount(params.automation.sellToken, params.automation.sellAmount),
+            },
+            {
+              token: params.automation.sellToken,
+              amount: toRawTokenAmount(params.automation.sellToken, params.automation.sellAmountPerCycle),
+            },
+          ],
+          referenceOne: 'STRK',
+          referenceTwo: params.automation.frequency,
+        });
+
+        if (activityCall) {
+          builder.add(activityCall);
+        }
+      }
+
       const tx = await builder.send(toExecutionOptions(executionMode));
       toast.success(automationEnabled ? 'Circle and auto-funding plan submitted' : 'Circle creation submitted');
 
@@ -1429,14 +1557,6 @@ export function useStarkZapActions() {
         kind: 'dca',
         providerId: params.automation.providerId || 'avnu',
         transactionHash: tx.hash,
-        details: {
-          totalAmount: params.automation.sellAmount,
-          totalToken: params.automation.sellToken,
-          cycleAmount: params.automation.sellAmountPerCycle,
-          cycleToken: params.automation.sellToken,
-          frequency: params.automation.frequency,
-          outputToken: 'STRK',
-        },
       });
     });
   }, [getWallet, normalizeExecutionMode, runAction, trackTransaction]);
@@ -1461,7 +1581,7 @@ export function useStarkZapActions() {
       return trackTransaction({
         title: 'Stake STRK',
         summary: `Stake ${params.amount} STRK in delegation pool`,
-        kind: 'swap',
+        kind: 'staking',
         providerId: 'starkzap',
         transactionHash: tx.hash,
       });
@@ -1497,7 +1617,7 @@ export function useStarkZapActions() {
       return trackTransaction({
         title: 'Claim Staking Rewards',
         summary: 'Claim accumulated delegation pool rewards',
-        kind: 'swap',
+        kind: 'staking',
         providerId: 'starkzap',
         transactionHash: tx.hash,
       });
@@ -1522,7 +1642,7 @@ export function useStarkZapActions() {
       return trackTransaction({
         title: 'Unstake Intent',
         summary: `Request unstake of ${params.amount} STRK`,
-        kind: 'swap',
+        kind: 'staking',
         providerId: 'starkzap',
         transactionHash: tx.hash,
       });
@@ -1543,7 +1663,7 @@ export function useStarkZapActions() {
       return trackTransaction({
         title: 'Complete Unstake',
         summary: 'Finalize pool exit and receive STRK',
-        kind: 'swap',
+        kind: 'staking',
         providerId: 'starkzap',
         transactionHash: tx.hash,
       });

@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ArrowRightLeft, PiggyBank, Repeat, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { ExecutionModePanel } from '@/components/starkzap/ExecutionModePanel';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -55,6 +56,9 @@ export function CircleFundingStudio(props: CircleFundingStudioProps) {
     fundCircleWithSwap,
     getMaxBorrowQuote,
     quoteLendingHealth,
+    recommendedExecutionMode,
+    sponsoredExecutionNotice,
+    supportsSponsoredExecution,
     swapProviderOptions,
   } = useStarkZapActions();
 
@@ -84,7 +88,7 @@ export function CircleFundingStudio(props: CircleFundingStudioProps) {
   const [lendingHealth, setLendingHealth] = useState<StarkZapLendingHealthView | null>(null);
   const [lendingError, setLendingError] = useState<string | null>(null);
   const [lendingBusy, setLendingBusy] = useState<'max' | 'health' | 'submit' | null>(null);
-  const executionMode: StarkZapExecutionMode = 'user_pays';
+  const [executionMode, setExecutionMode] = useState<StarkZapExecutionMode>(recommendedExecutionMode);
 
   const targetAmount = Number.parseFloat(requiredAmountLabel || '0');
   const swapBestOutput = swapComparisons[0] ? parseFormattedAmount(swapComparisons[0].amountOut) : 0;
@@ -92,6 +96,12 @@ export function CircleFundingStudio(props: CircleFundingStudioProps) {
 
   const showBorrowControls = lendingAction === 'borrow';
   const showFixedAmount = lendingAction !== 'withdraw_max';
+
+  useEffect(() => {
+    if (executionMode === 'sponsored' && !supportsSponsoredExecution) {
+      setExecutionMode('user_pays');
+    }
+  }, [executionMode, supportsSponsoredExecution]);
 
   const handlePreviewSwap = async () => {
     try {
@@ -240,6 +250,15 @@ export function CircleFundingStudio(props: CircleFundingStudioProps) {
       </div>
 
       <div className="grid gap-6">
+        <ExecutionModePanel
+          value={executionMode}
+          onChange={setExecutionMode}
+          supportsSponsoredExecution={supportsSponsoredExecution}
+          sponsoredExecutionNotice={sponsoredExecutionNotice}
+          recommendedExecutionMode={recommendedExecutionMode}
+          description="Use the same execution mode for the swap, DCA, and lending strategies inside this circle."
+        />
+
         <div className="neo-card p-6 md:p-8">
           <div className="mb-5 flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center border-[3px] border-black bg-[#4ECDC4]">

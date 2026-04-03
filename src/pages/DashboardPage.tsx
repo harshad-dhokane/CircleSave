@@ -18,8 +18,8 @@ import {
   ChartTooltipContent,
 } from '@/components/ui/chart';
 import { useIncomingCircleRequests, useUserCircles } from '@/hooks/useCircle';
+import { useMyStarkZapActivity } from '@/hooks/useMyStarkZapActivity';
 import { useReputation } from '@/hooks/useReputation';
-import { useStarkZapLogs } from '@/hooks/useStarkZapLogs';
 import { useWallet } from '@/hooks/useWallet';
 import { isCircleReadyToStart } from '@/lib/circleState';
 import { formatAddress, formatAmountShort } from '@/lib/constants';
@@ -35,7 +35,7 @@ const MODULE_META = [
 
 const activityChartConfig = {
   circles: { label: 'Circles', color: '#B5F36B' },
-  swaps: { label: 'Swaps', color: '#7CC8FF' },
+  actions: { label: 'Actions', color: '#7CC8FF' },
 } as const;
 
 const exposureChartConfig = {
@@ -112,12 +112,11 @@ function getLogStatusPill(status: string) {
 
 export function DashboardPage() {
   const {
-    address,
     isConnected,
     walletNotice,
   } = useWallet();
   const { circles } = useUserCircles();
-  const { logs } = useStarkZapLogs();
+  const { activity: myLogs } = useMyStarkZapActivity();
   const { stats } = useReputation();
   const {
     requests,
@@ -130,21 +129,13 @@ export function DashboardPage() {
   const readyCircles = circles.filter((circle) => isCircleReadyToStart(circle));
   const monthlyCommitted = circles.reduce((sum, circle) => sum + circle.monthlyAmount, 0n);
 
-  const myLogs = useMemo(() => {
-    if (!address) {
-      return [];
-    }
-
-    return logs.filter((entry) => entry.account.toLowerCase() === address.toLowerCase());
-  }, [address, logs]);
-
   const recentCircles = useMemo(
     () => [...circles].sort((left, right) => toCircleTimestamp(right.createdAt) - toCircleTimestamp(left.createdAt)).slice(0, 5),
     [circles],
   );
 
-  const recentSwapLogs = useMemo(
-    () => myLogs.filter((entry) => entry.kind === 'swap').slice(0, 5),
+  const recentActivityLogs = useMemo(
+    () => myLogs.slice(0, 5),
     [myLogs],
   );
 
@@ -173,7 +164,7 @@ export function DashboardPage() {
         key: timestamp,
         label: formatDayLabel(timestamp),
         circles: 0,
-        swaps: 0,
+        actions: 0,
       };
     });
 
@@ -190,8 +181,8 @@ export function DashboardPage() {
     myLogs.forEach((entry) => {
       const key = getDayKey(new Date(entry.updatedAt).getTime());
       const index = bucketIndex.get(key);
-      if (index !== undefined && entry.kind === 'swap') {
-        buckets[index].swaps += 1;
+      if (index !== undefined) {
+        buckets[index].actions += 1;
       }
     });
 
@@ -201,7 +192,7 @@ export function DashboardPage() {
   const busiestDay = useMemo(() => {
     const peak = activitySeries.reduce(
       (best, item) => {
-        const total = item.circles + item.swaps;
+        const total = item.circles + item.actions;
         return total > best.total ? { label: item.label, total } : best;
       },
       { label: 'Quiet', total: 0 },
@@ -275,16 +266,16 @@ export function DashboardPage() {
     <div className="space-y-4 pb-4">
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {[
-            { label: 'Active circles', value: activeCircles.length },
-            { label: 'Ready to launch', value: readyToStartCount || readyCircles.length },
-            { label: 'Approval queue', value: pendingCount },
-            { label: 'Monthly flow', value: formatAmountShort(monthlyCommitted) },
+            { label: 'Active circles', value: activeCircles.length, bg: 'bg-[#B5F36B]', text: 'text-slate-950', shadow: 'shadow-[0_14px_36px_-18px_rgba(181,243,107,0.45)]', border: 'border-[#9ad255]/30' },
+            { label: 'Ready to launch', value: readyToStartCount || readyCircles.length, bg: 'bg-[#FFB457]', text: 'text-slate-950', shadow: 'shadow-[0_14px_36px_-18px_rgba(255,180,87,0.45)]', border: 'border-[#e09938]/30' },
+            { label: 'Approval queue', value: pendingCount, bg: 'bg-[#A48DFF]', text: 'text-slate-950', shadow: 'shadow-[0_14px_36px_-18px_rgba(164,141,255,0.45)]', border: 'border-[#8a6fe0]/30' },
+            { label: 'Monthly flow', value: formatAmountShort(monthlyCommitted), bg: 'bg-[#7AE7C7]', text: 'text-slate-950', shadow: 'shadow-[0_14px_36px_-18px_rgba(122,231,199,0.45)]', border: 'border-[#5cc5a1]/30' },
           ].map((item) => (
-            <div key={item.label} className="rounded-[18px] border border-black/10 bg-black/[0.03] px-4 py-3 dark:border-white/10 dark:bg-white/5">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+            <div key={item.label} className={`rounded-[18px] border px-4 py-4 ${item.bg} ${item.border} ${item.shadow} transition-transform duration-200 hover:-translate-y-0.5`}>
+              <p className={`text-[11px] font-semibold uppercase tracking-[0.16em] ${item.text} opacity-70`}>
                 {item.label}
               </p>
-              <p className="mt-1 text-lg font-semibold text-foreground">{item.value}</p>
+              <p className={`mt-2 text-2xl font-bold ${item.text}`}>{item.value}</p>
             </div>
           ))}
         </section>
@@ -305,7 +296,7 @@ export function DashboardPage() {
                   Activity
                 </p>
                 <h3 className="font-display text-[1.35rem] font-semibold tracking-[-0.04em] text-foreground">
-                  Circle and swap trend
+                  Circle and activity trend
                 </h3>
               </div>
               <Button variant="outline" size="sm" asChild>
@@ -323,9 +314,9 @@ export function DashboardPage() {
                     <stop offset="5%" stopColor="var(--color-circles)" stopOpacity={0.4} />
                     <stop offset="95%" stopColor="var(--color-circles)" stopOpacity={0} />
                   </linearGradient>
-                  <linearGradient id="fill-swaps" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="var(--color-swaps)" stopOpacity={0.28} />
-                    <stop offset="95%" stopColor="var(--color-swaps)" stopOpacity={0} />
+                  <linearGradient id="fill-actions" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="var(--color-actions)" stopOpacity={0.28} />
+                    <stop offset="95%" stopColor="var(--color-actions)" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid vertical={false} strokeDasharray="3 3" />
@@ -340,10 +331,10 @@ export function DashboardPage() {
                 />
                 <Area
                   type="monotone"
-                  dataKey="swaps"
-                  stroke="var(--color-swaps)"
+                  dataKey="actions"
+                  stroke="var(--color-actions)"
                   strokeWidth={2}
-                  fill="url(#fill-swaps)"
+                  fill="url(#fill-actions)"
                 />
               </AreaChart>
             </ChartContainer>
@@ -351,7 +342,7 @@ export function DashboardPage() {
             <div className="mt-4 grid gap-3 border-t border-black/8 pt-4 dark:border-white/10 sm:grid-cols-2 xl:grid-cols-4">
               {[
                 { label: 'Circles 7d', value: activitySeries.reduce((sum, item) => sum + item.circles, 0) },
-                { label: 'Swaps 7d', value: activitySeries.reduce((sum, item) => sum + item.swaps, 0) },
+                { label: 'Actions 7d', value: activitySeries.reduce((sum, item) => sum + item.actions, 0) },
                 { label: 'Live queue', value: pendingCount + readyToStartCount },
                 { label: 'Busiest day', value: busiestDay },
               ].map((item) => (
@@ -376,21 +367,24 @@ export function DashboardPage() {
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              {dashboardOpsStats.map((row) => (
-                <Link
-                  key={row.label}
-                  to={row.to}
-                  className="rounded-[18px] border border-black/10 bg-black/[0.03] px-4 py-3 transition duration-200 hover:bg-black/[0.05] dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/8"
-                >
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                    {row.label}
-                  </p>
-                  <p className="mt-2 text-[1.55rem] font-semibold leading-none text-foreground">{row.value}</p>
-                  <p className="mt-2 truncate text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                    {row.detail}
-                  </p>
-                </Link>
-              ))}
+              {dashboardOpsStats.map((row, index) => {
+                const accents = ['border-l-[#B5F36B]', 'border-l-[#FFB457]', 'border-l-[#A48DFF]', 'border-l-[#7AE7C7]'];
+                return (
+                  <Link
+                    key={row.label}
+                    to={row.to}
+                    className={`rounded-[18px] border border-black/10 border-l-[3px] ${accents[index]} bg-black/[0.03] px-4 py-3 transition duration-200 hover:-translate-y-0.5 hover:bg-black/[0.05] dark:border-white/6 dark:bg-white/5 dark:hover:bg-white/8`}
+                  >
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                      {row.label}
+                    </p>
+                    <p className="mt-2 text-[1.55rem] font-bold leading-none text-foreground">{row.value}</p>
+                    <p className="mt-2 truncate text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                      {row.detail}
+                    </p>
+                  </Link>
+                );
+              })}
             </div>
           </div>
 
@@ -500,18 +494,18 @@ export function DashboardPage() {
                   <Link
                     key={module.key}
                     to={module.to}
-                    className="flex items-center justify-between gap-3 rounded-[18px] border border-black/10 bg-black/[0.03] px-3.5 py-3 transition duration-200 hover:bg-black/[0.05] dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/8"
+                    className="flex items-center justify-between gap-3 rounded-[18px] border border-black/10 bg-black/[0.03] px-3.5 py-3 transition duration-200 hover:-translate-y-0.5 hover:bg-black/[0.05] dark:border-white/6 dark:bg-white/5 dark:hover:bg-white/8"
                   >
                     <div className="flex min-w-0 items-center gap-3">
                       <div
-                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px] border border-black/10 dark:border-white/10"
-                        style={{ backgroundColor: `${module.accent}24`, color: module.accent }}
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[12px] border border-white/10"
+                        style={{ backgroundColor: `${module.accent}30`, color: module.accent, boxShadow: `0 0 16px -4px ${module.accent}30` }}
                       >
-                        <Icon className="h-3.5 w-3.5" />
+                        <Icon className="h-4 w-4" />
                       </div>
                       <span className="truncate text-sm font-semibold text-foreground">{module.label}</span>
                     </div>
-                    <span className="text-sm font-semibold text-muted-foreground">{module.count}</span>
+                    <span className="text-base font-bold text-foreground">{module.count}</span>
                   </Link>
                 );
               })}
@@ -523,27 +517,40 @@ export function DashboardPage() {
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div>
                   <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                    Swaps
+                    Automation
                   </p>
                   <h3 className="font-display text-[1.35rem] font-semibold tracking-[-0.04em] text-foreground">
-                    Recent swaps
+                    Recent activity
                   </h3>
                 </div>
                 <Button variant="outline" size="sm" asChild>
-                  <Link to="/swap">Open swap</Link>
+                  <Link to="/logs">Open logs</Link>
                 </Button>
               </div>
 
               <div className="space-y-2.5">
-                {recentSwapLogs.length > 0 ? recentSwapLogs.map((entry) => (
+                {recentActivityLogs.length > 0 ? recentActivityLogs.map((entry) => {
+                  const module = MODULE_META.find((item) => item.key === entry.kind);
+
+                  return (
                   <Link
                     key={entry.id}
-                    to="/logs"
+                    to={module?.to || '/logs'}
                     className="block rounded-[18px] border border-black/10 bg-black/[0.03] px-4 py-3 transition duration-200 hover:bg-black/[0.05] dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/8"
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-foreground">{entry.title}</p>
+                      <div className="min-w-0 space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {module ? (
+                            <span
+                              className="inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]"
+                              style={{ backgroundColor: `${module.accent}24`, color: module.accent }}
+                            >
+                              {module.label}
+                            </span>
+                          ) : null}
+                          <p className="truncate text-sm font-semibold text-foreground">{entry.title}</p>
+                        </div>
                         <p className="mt-1 truncate text-xs uppercase tracking-[0.14em] text-muted-foreground">
                           {getStarkZapLogAmountText(entry) || entry.summary}
                         </p>
@@ -557,9 +564,10 @@ export function DashboardPage() {
                       <span>{formatShortDateTime(entry.updatedAt)}</span>
                     </div>
                   </Link>
-                )) : (
+                  );
+                }) : (
                   <div className="rounded-[18px] border border-dashed border-black/10 px-4 py-8 text-center text-sm text-muted-foreground dark:border-white/10">
-                    No swap activity yet.
+                    No automation activity yet.
                   </div>
                 )}
               </div>

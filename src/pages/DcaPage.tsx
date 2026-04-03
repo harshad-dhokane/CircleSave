@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   CalendarClock,
@@ -8,6 +8,7 @@ import {
   Repeat,
   Wallet,
 } from 'lucide-react';
+import { ProcessInfoButton } from '@/components/help/ProcessInfoButton';
 import { Button } from '@/components/ui/button';
 import { CopyButton } from '@/components/ui/copy-button';
 import {
@@ -30,7 +31,6 @@ import {
   type StarkZapDcaFrequency,
   type StarkZapDcaPreview,
   type StarkZapDcaProviderId,
-  type StarkZapExecutionMode,
   type StarkZapOrderView,
   type StarkZapTokenKey,
   useStarkZapActions,
@@ -62,7 +62,7 @@ const DCA_TEMPLATES: Array<{
 function getOrderStatusClasses(status: string) {
   switch (status) {
     case 'ACTIVE':
-      return 'border border-[#b7f064]/30 bg-[linear-gradient(135deg,rgba(181,243,107,0.92)_0%,rgba(124,200,255,0.72)_100%)] text-slate-950 shadow-[0_14px_30px_-22px_rgba(126,192,86,0.72)]';
+      return 'border border-[#b7f064]/30 bg-[#B5F36B] text-slate-950 shadow-[0_14px_30px_-22px_rgba(126,192,86,0.58)]';
     case 'COMPLETED':
       return 'border border-sky-400/24 bg-sky-400/18 text-sky-200';
     case 'CANCELLED':
@@ -81,6 +81,8 @@ export function DcaPage() {
     isWalletReady,
     loadDcaOrders,
     previewDca,
+    recommendedExecutionMode,
+    supportsSponsoredExecution,
   } = useStarkZapActions();
   const [sellToken, setSellToken] = useState<StarkZapTokenKey>('USDC');
   const [buyToken, setBuyToken] = useState<StarkZapTokenKey>('STRK');
@@ -97,7 +99,9 @@ export function DcaPage() {
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<StarkZapOrderView | null>(null);
-  const feeMode: StarkZapExecutionMode = 'user_pays';
+  const feeMode = recommendedExecutionMode === 'sponsored' && supportsSponsoredExecution
+    ? 'sponsored'
+    : 'user_pays';
   const moduleStats = useStarkZapModuleStats('dca');
 
   const totalCycles = useMemo(() => {
@@ -107,7 +111,7 @@ export function DcaPage() {
     return Math.ceil(total / perCycle);
   }, [sellAmount, sellAmountPerCycle]);
 
-  const refreshOrders = async (nextFilter: 'all' | StarkZapDcaProviderId = orderFilter) => {
+  const refreshOrders = useCallback(async (nextFilter: 'all' | StarkZapDcaProviderId = orderFilter) => {
     try {
       setLoadingOrders(true);
       setOrders(await loadDcaOrders({ providerId: nextFilter }));
@@ -116,12 +120,12 @@ export function DcaPage() {
     } finally {
       setLoadingOrders(false);
     }
-  };
+  }, [loadDcaOrders, orderFilter]);
 
   useEffect(() => {
     if (!isWalletReady) return;
     void refreshOrders(orderFilter);
-  }, [isWalletReady, orderFilter, loadDcaOrders]);
+  }, [isWalletReady, orderFilter, refreshOrders]);
 
   const handlePreview = async () => {
     try {
@@ -210,6 +214,42 @@ export function DcaPage() {
       <div className="grid gap-4 xl:items-start xl:grid-cols-[1.08fr_0.92fr]">
         <section className="space-y-4">
           <section className="neo-panel p-4 md:p-5">
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  DCA
+                </p>
+                <h2 className="mt-1 font-display text-[1.3rem] font-semibold tracking-[-0.04em] text-foreground">
+                  Plan builder
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Set a recurring sell plan, preview one cycle, then create the long-running DCA order.
+                </p>
+              </div>
+              <ProcessInfoButton
+                title="DCA plan builder"
+                description="DCA creates a recurring order that converts one asset into another on a schedule."
+                items={[
+                  {
+                    label: 'Total amount',
+                    description: 'This is the full budget for the whole DCA plan.',
+                  },
+                  {
+                    label: 'Per cycle',
+                    description: 'This is how much of the total budget is used each recurring run.',
+                  },
+                  {
+                    label: 'Frequency and provider',
+                    description: 'Frequency controls timing. Provider controls where the recurring swap order routes.',
+                  },
+                  {
+                    label: 'Preview before create',
+                    description: 'Preview one cycle first so you can sanity-check the live output before committing the order on-chain.',
+                  },
+                ]}
+              />
+            </div>
+
             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
               <div className="flex flex-wrap gap-2">
                 <div className="neo-chip">
@@ -221,7 +261,7 @@ export function DcaPage() {
                   {totalCycles > 0 ? `${totalCycles} cycles` : 'Set amounts'}
                 </div>
               </div>
-              <Button variant="outline" size="sm" asChild className="w-full sm:w-auto">
+              <Button variant="violet" size="sm" asChild className="w-full sm:w-auto">
                 <Link to="/logs">
                   <FileText className="h-4 w-4" />
                   Logs
@@ -255,7 +295,7 @@ export function DcaPage() {
                   className={`rounded-full border px-3.5 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] transition ${
                     template.sellToken === sellToken && template.buyToken === buyToken
                     && template.providerId === providerId && template.frequency === frequency
-                      ? 'border-[#9ad255]/35 bg-[#B5F36B] text-slate-950'
+                      ? 'border-[#8a6fe0]/34 bg-[#A48DFF] text-slate-950'
                       : 'border-black/10 bg-black/[0.03] text-muted-foreground hover:bg-black/[0.045] dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/8'
                   }`}
                 >
@@ -345,13 +385,19 @@ export function DcaPage() {
             </div>
 
             <div className="mt-5 grid gap-3 sm:flex sm:flex-wrap">
-              <Button variant="outline" onClick={handlePreview} disabled={activeAction !== null || !isWalletReady} className="w-full sm:w-auto">
+              <Button
+                variant="outline"
+                onClick={handlePreview}
+                disabled={activeAction !== null || !isWalletReady}
+                className="w-full border-[#8a6fe0]/26 hover:border-[#8a6fe0]/38 hover:bg-[#A48DFF]/14 dark:hover:bg-[#A48DFF]/14 sm:w-auto"
+              >
                 {activeAction === 'preview' ? 'Previewing...' : 'Preview'}
               </Button>
               <Button
+                variant="violet"
                 onClick={handleCreate}
                 disabled={activeAction !== null || !isWalletReady}
-                className="w-full border-[#9ad255]/35 bg-[linear-gradient(135deg,#B5F36B_0%,#7CC8FF_100%)] text-slate-950 dark:bg-[linear-gradient(135deg,#B5F36B_0%,#7CC8FF_100%)] sm:w-auto"
+                className="w-full sm:w-auto"
               >
                 {activeAction === 'create' ? 'Creating...' : 'Create order'}
               </Button>
@@ -374,19 +420,39 @@ export function DcaPage() {
                   Existing plans
                 </h3>
               </div>
-              <Select value={orderFilter} onValueChange={(value) => setOrderFilter(value as 'all' | StarkZapDcaProviderId)}>
-                <SelectTrigger className="w-full sm:w-[10rem]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All providers</SelectItem>
-                  {dcaProviderOptions.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex items-center gap-2">
+                <Select value={orderFilter} onValueChange={(value) => setOrderFilter(value as 'all' | StarkZapDcaProviderId)}>
+                  <SelectTrigger className="w-full sm:w-[10rem]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All providers</SelectItem>
+                    {dcaProviderOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <ProcessInfoButton
+                  title="Existing DCA plans"
+                  description="This section lists the recurring orders already tied to your wallet."
+                  items={[
+                    {
+                      label: 'Status',
+                      description: 'Active plans are still running. Completed plans finished their budget. Cancelled plans were stopped manually.',
+                    },
+                    {
+                      label: 'Budget and progress',
+                      description: 'Budget is the total plan size. Sold and bought help you see how much of that plan already executed.',
+                    },
+                    {
+                      label: 'Order details',
+                      description: 'Use the info icon on an order row to open the full order detail dialog.',
+                    },
+                  ]}
+                />
+              </div>
             </div>
 
             {loadingOrders ? (
@@ -487,7 +553,23 @@ export function DcaPage() {
                   Preview
                 </h3>
               </div>
-              <CalendarClock className="h-5 w-5 text-[#A48DFF]" />
+              <div className="flex items-center gap-2">
+                <CalendarClock className="h-5 w-5 text-[#A48DFF]" />
+                <ProcessInfoButton
+                  title="DCA preview"
+                  description="The preview estimates what one DCA cycle could buy under current market conditions."
+                  items={[
+                    {
+                      label: 'Estimated buy per cycle',
+                      description: 'This is the current expected output for one recurring execution, not the total plan output.',
+                    },
+                    {
+                      label: 'Cycles',
+                      description: 'Cycles are calculated from total amount divided by per-cycle amount so you know how long the plan should run.',
+                    },
+                  ]}
+                />
+              </div>
             </div>
 
             {preview ? (

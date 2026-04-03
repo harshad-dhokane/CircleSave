@@ -8,15 +8,24 @@ import { CIRCLE_ABI, CIRCLE_FACTORY_ABI, REPUTATION_ABI } from '@/lib/abis';
 const RPC_URL = import.meta.env.VITE_STARKNET_RPC_URL || 'https://starknet-sepolia-rpc.publicnode.com';
 const rpc = new RpcProvider({ nodeUrl: RPC_URL });
 
-function newContract(abi: any, address: string) {
-  return new Contract({ abi, address, providerOrAccount: rpc });
+type Uint256Like = {
+  low: string | number | bigint;
+  high: string | number | bigint;
+};
+
+function isUint256Like(value: unknown): value is Uint256Like {
+  return value !== null && typeof value === 'object' && 'low' in value && 'high' in value;
 }
 
-function toBigIntValue(value: any): bigint {
+function newContract(abi: unknown, address: string) {
+  return new Contract({ abi: abi as never, address, providerOrAccount: rpc });
+}
+
+function toBigIntValue(value: unknown): bigint {
   if (typeof value === 'bigint') return value;
   if (typeof value === 'number') return BigInt(value);
   if (typeof value === 'string') return BigInt(value);
-  if (value && typeof value === 'object' && 'low' in value && 'high' in value) {
+  if (isUint256Like(value)) {
     const low = BigInt(value.low);
     const high = BigInt(value.high);
     return low + (high << 128n);
@@ -24,7 +33,7 @@ function toBigIntValue(value: any): bigint {
   return BigInt(0);
 }
 
-function toHexAddress(value: any): string {
+function toHexAddress(value: unknown): string {
   if (typeof value === 'string') {
     return value.startsWith('0x') ? value : `0x${BigInt(value).toString(16)}`;
   }
@@ -142,9 +151,9 @@ export function useReputation() {
       };
       setStats(parsedStats);
 
-      const rawBadges = await contract.get_badges(address);
+      const rawBadges = await contract.get_badges(address) as Array<string | bigint>;
       const allBadgeIds = Object.keys(BADGE_NAMES);
-      const earnedBadgeIds = rawBadges.map((b: any) => feltToString(b));
+      const earnedBadgeIds = rawBadges.map((badge) => feltToString(badge));
       
       const parsedBadges: Badge[] = allBadgeIds.map(id => ({
         id,
@@ -157,9 +166,9 @@ export function useReputation() {
       const rawLevel = await contract.calculate_level(address);
       const levelStr = feltToString(rawLevel);
       setLevel(levelStr);
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error fetching reputation:', err);
-      setError(err.message || 'Failed to fetch reputation');
+      setError(err instanceof Error ? err.message : 'Failed to fetch reputation');
     } finally {
       setIsLoading(false);
     }

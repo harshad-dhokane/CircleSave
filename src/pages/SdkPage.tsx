@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowRight,
@@ -15,6 +15,7 @@ import {
   Wallet,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useStarkZapLogs } from '@/hooks/useStarkZapLogs';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 
@@ -121,7 +122,7 @@ const guideTopics: GuideTopic[] = [
   {
     id: 'visibility',
     label: 'Logs + Dashboard',
-    summary: 'Public logs and wallet-specific dashboard activity from contracts.',
+    summary: 'Public CircleSave logs plus shared StarkZap registry activity and wallet-specific dashboard views.',
     color: '#DDA0DD',
     icon: FileText,
   },
@@ -267,7 +268,7 @@ const featureMap: FeatureMapEntry[] = [
     files: [
       'src/pages/BatchingPage.tsx',
       'src/hooks/useStarkZapActions.ts',
-      'src/lib/starkzapLogs.ts',
+      'src/lib/starkzapActivityRegistry.ts',
     ],
   },
   {
@@ -303,7 +304,7 @@ const featureMap: FeatureMapEntry[] = [
   {
     title: 'Public Logs + Wallet Activity',
     summary:
-      'The logs page reads public contract events for everyone, while the dashboard activity tab filters contract events to the connected wallet and circles it belongs to.',
+      'The logs page reads public contract events plus the shared StarkZap registry, while the dashboard filters shared StarkZap activity to the connected wallet and its circles.',
     color: '#45B7D1',
     icon: FileText,
     routes: [
@@ -312,6 +313,7 @@ const featureMap: FeatureMapEntry[] = [
     ],
     files: [
       'src/hooks/useOnchainActivityFeed.ts',
+      'src/hooks/useStarkZapLogs.ts',
       'src/pages/LogsPage.tsx',
       'src/pages/ProfilePage.tsx',
     ],
@@ -422,6 +424,27 @@ builder.dcaCreate({
     : false;
 });`,
   },
+  {
+    title: 'Shared StarkZap Registry Write',
+    file: 'src/lib/starkzapActivityRegistry.ts',
+    summary:
+      'Shared swap, batch, DCA, and lending records are appended into the same wallet-signed transaction so analytics and logs are contract-backed instead of browser-local.',
+    code: String.raw`const activityCall = buildStarkZapActivityCall({
+  module: 'swap',
+  action: 'execute',
+  provider: providerId,
+  executionMode,
+  volumes: [
+    { token: params.tokenIn, amount: amountIn.toBase() },
+    { token: params.tokenOut, amount: prepared.quote.amountOutBase },
+  ],
+});
+
+const tx = await wallet.execute(
+  activityCall ? [...prepared.calls, activityCall] : prepared.calls,
+  toExecutionOptions(executionMode),
+);`,
+  },
 ] as const;
 
 const troubleshootingTips = [
@@ -488,7 +511,7 @@ function TopicTabTrigger(props: { topic: GuideTopic }) {
   return (
     <TabsTrigger
       value={props.topic.id}
-      className="flex-none min-w-[170px] shrink-0 justify-start rounded-[18px] border border-black/10 bg-black/[0.03] px-3 py-2.5 text-left text-[13px] font-semibold uppercase tracking-[0.1em] text-foreground transition-all hover:bg-black/[0.05] dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/8 data-[state=active]:border-black/10 data-[state=active]:bg-foreground data-[state=active]:text-background data-[state=active]:shadow-[0_16px_36px_-24px_rgba(15,23,42,0.34)] dark:data-[state=active]:border-white/10 dark:data-[state=active]:bg-white dark:data-[state=active]:text-slate-950 sm:min-w-[188px] xl:min-w-0 xl:w-full xl:flex-1"
+      className="flex-none min-w-[170px] shrink-0 justify-start rounded-[18px] border border-black/10 bg-black/[0.03] px-3 py-2.5 text-left text-[13px] font-semibold uppercase tracking-[0.1em] text-foreground transition-all hover:bg-black/[0.05] dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/8 data-[state=active]:border-[#9ad255]/35 data-[state=active]:bg-[#B5F36B] data-[state=active]:text-slate-950 data-[state=active]:shadow-[0_16px_36px_-24px_rgba(120,170,43,0.34)] dark:data-[state=active]:border-[#9ad255]/28 dark:data-[state=active]:bg-[#B5F36B] dark:data-[state=active]:text-slate-950 sm:min-w-[188px] xl:min-w-0 xl:w-full xl:flex-1"
     >
       <div className="flex items-start gap-3">
         <div
@@ -576,6 +599,20 @@ export function SdkPage() {
   const [activeTopic, setActiveTopic] = useState<GuideTopic['id']>('overview');
   const contentRef = useRef<HTMLDivElement | null>(null);
   const shouldScrollToContentRef = useRef(false);
+  const { hasConfiguredRegistry, logs: sharedStarkZapLogs } = useStarkZapLogs();
+
+  const challengeMetrics = useMemo(() => {
+    const modules = new Set(sharedStarkZapLogs.map((entry) => entry.kind));
+    const sponsoredCount = sharedStarkZapLogs.filter((entry) => entry.executionMode === 'sponsored').length;
+    const circleAutomationCount = sharedStarkZapLogs.filter((entry) => entry.title === 'Launch Circle + DCA').length;
+
+    return {
+      totalRecords: sharedStarkZapLogs.length,
+      modules: modules.size,
+      sponsoredCount,
+      circleAutomationCount,
+    };
+  }, [sharedStarkZapLogs]);
 
   useEffect(() => {
     if (!shouldScrollToContentRef.current) return;
@@ -608,19 +645,19 @@ export function SdkPage() {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <Button asChild size="sm">
+            <Button asChild size="sm" variant="mint">
               <Link to="/circles">
                 Open Circles
                 <ArrowRight className="h-4 w-4" />
               </Link>
             </Button>
-            <Button asChild size="sm" variant="outline">
+            <Button asChild size="sm" variant="sky">
               <Link to="/swap">Swap</Link>
             </Button>
-            <Button asChild size="sm" variant="outline">
+            <Button asChild size="sm" variant="amber">
               <Link to="/batching">Batching</Link>
             </Button>
-            <Button asChild size="sm" variant="outline">
+            <Button asChild size="sm" variant="sky">
               <Link to="/logs">Logs</Link>
             </Button>
           </div>
@@ -628,18 +665,18 @@ export function SdkPage() {
 
         <div className="mt-4 grid gap-3 sm:grid-cols-3">
           {[
-            { label: 'Guide sections', value: guideTopics.length },
-            { label: 'Start here', value: 'Circles first' },
-            { label: 'Covers', value: 'Public + wallet flows' },
+            { label: 'Guide sections', value: guideTopics.length, bg: 'bg-[#B5F36B]', border: 'border-[#9ad255]/30' },
+            { label: 'Start here', value: 'Circles first', bg: 'bg-[#FFB457]', border: 'border-[#e09938]/30' },
+            { label: 'Shared StarkZap', value: hasConfiguredRegistry ? `${challengeMetrics.totalRecords} records` : 'Registry pending', bg: 'bg-[#7CC8FF]', border: 'border-[#66b8ef]/30' },
           ].map((item) => (
             <div
               key={item.label}
-              className="rounded-[18px] border border-black/10 bg-black/[0.03] px-4 py-3 dark:border-white/10 dark:bg-white/5"
+              className={`rounded-[18px] border px-4 py-3 shadow-[0_18px_40px_-24px_rgba(15,23,42,0.16)] ${item.bg} ${item.border}`}
             >
-              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-950/70">
                 {item.label}
               </p>
-              <p className="mt-1 text-sm font-semibold text-foreground">{item.value}</p>
+              <p className="mt-1 text-sm font-semibold text-slate-950">{item.value}</p>
             </div>
           ))}
         </div>
@@ -672,6 +709,37 @@ export function SdkPage() {
                 color="#FF6B6B"
                 icon={Sparkles}
               >
+                <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                  {[
+                    {
+                      label: 'Shared StarkZap records',
+                      value: String(challengeMetrics.totalRecords),
+                      detail: hasConfiguredRegistry ? 'contract-backed feed' : 'awaiting registry address',
+                    },
+                    {
+                      label: 'Live modules',
+                      value: String(challengeMetrics.modules),
+                      detail: 'swap, batch, DCA, lend',
+                    },
+                    {
+                      label: 'Sponsored records',
+                      value: String(challengeMetrics.sponsoredCount),
+                      detail: 'gasless executions',
+                    },
+                    {
+                      label: 'Circle launch bundles',
+                      value: String(challengeMetrics.circleAutomationCount),
+                      detail: 'create circle + DCA',
+                    },
+                  ].map((item) => (
+                    <div key={item.label} className={helpCardClass}>
+                      <p className={helpKickerClass}>{item.label}</p>
+                      <p className="mt-3 text-2xl font-semibold text-foreground">{item.value}</p>
+                      <p className="mt-2 text-sm text-muted-foreground">{item.detail}</p>
+                    </div>
+                  ))}
+                </div>
+
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                   {[
                     {
@@ -691,7 +759,7 @@ export function SdkPage() {
                     },
                     {
                       title: 'Verify Through Contracts',
-                      body: 'Logs and dashboard activity are contract-backed, not browser-storage driven.',
+                      body: 'Logs and dashboard activity are contract-backed, including shared StarkZap registry records.',
                       color: '#96CEB4',
                     },
                   ].map((item) => (
@@ -712,8 +780,8 @@ export function SdkPage() {
                           'The old SDK summary page has been replaced by this route-level guide so the product now has one place that explains the real implementation.',
                           'The dedicated batching route now supports user-defined row count with mixed-token transfers in one TxBuilder transaction.',
                           'Circle creation can launch with a recurring STRK DCA order, and circle detail pages include embedded StarkZap funding flows.',
-                          'The public logs page now reads CircleSave contract events directly from Starknet without requiring a wallet connection.',
-                          'Dashboard activity now reads contract events for the connected wallet and circles that wallet belongs to.',
+                          'The public logs page now reads CircleSave contract events plus the shared StarkZap registry directly from Starknet without requiring a wallet connection.',
+                          'Dashboard activity now reads shared StarkZap activity for the connected wallet instead of browser-local transaction history.',
                         ]}
                       />
                     </div>
@@ -726,7 +794,7 @@ export function SdkPage() {
                         items={[
                           'Understanding what each route is supposed to do before you click into it.',
                           'Seeing which StarkZap v2 features are already implemented versus what is only planned.',
-                          'Finding the exact files that own batching, swap, DCA, lending, circle funding, logs, and dashboard activity.',
+                          'Finding the exact files that own batching, swap, DCA, lending, circle funding, logs, shared registry analytics, and dashboard activity.',
                           'Copying working code patterns from the snippets section into future features.',
                         ]}
                       />
@@ -755,7 +823,7 @@ export function SdkPage() {
                           'Open Circles first to browse active, pending, owned, and joined circles.',
                           'Create a circle if you are launching a new group, or open a circle detail page if you want to join or contribute.',
                           'Use Swap, DCA, Batching, or Lending when you need to fund or automate actions before coming back to a circle.',
-                          'Check Logs for the shared public contract feed and Profile for wallet-specific activity, balances, and reputation.',
+                          'Check Logs for the shared public contract feed and Dashboard/Profile for wallet-specific activity, balances, and reputation.',
                         ]}
                       />
                     </div>
@@ -770,6 +838,7 @@ export function SdkPage() {
                           'Which features are available on each route.',
                           'How CircleSave circle actions connect to StarkZap automation.',
                           'What is public for all users versus wallet-specific.',
+                          'Which usage metrics are now shared through the StarkZap registry.',
                           'What current Sepolia limits or caveats you should expect.',
                         ]}
                       />
@@ -823,6 +892,7 @@ export function SdkPage() {
                           'Everything is pointed at Starknet Sepolia.',
                           'PublicNode is used as the default JSON-RPC provider and Cartridge RPC is used for balance-related reads.',
                           'The paymaster provider is configured for AVNU sponsored execution.',
+                          'Shared StarkZap analytics are read from the on-chain activity registry when its address is configured.',
                         ]}
                       />
                     </div>
@@ -834,7 +904,7 @@ export function SdkPage() {
                       <BulletList
                         items={[
                           'Gasless mode only appears when the connected account exposes paymaster execution.',
-                          'If sponsored execution is unavailable, the UI falls back to User Pays and disables the gasless toggle.',
+                          'If sponsored execution is unavailable, the UI falls back to User Pays and disables the gasless option.',
                           'This logic is handled in the StarkZap action hook and the custom connected wallet adapter.',
                         ]}
                       />
@@ -1000,6 +1070,7 @@ export function SdkPage() {
                       <RoutePill to="/swap" label="Open Swap" />
                       <FilePill path="src/pages/SwapPage.tsx" />
                       <FilePill path="src/hooks/useStarkZapActions.ts" />
+                      <FilePill path="src/lib/starkzapActivityRegistry.ts" />
                     </div>
                   </div>
                 </div>
@@ -1037,7 +1108,7 @@ export function SdkPage() {
                         items={[
                           'The action hook groups rows by token and chains multiple .transfer(...) steps into one wallet.tx() builder.',
                           'The batching page shows token subtotals so users can understand how the mixed-asset batch resolves before signing.',
-                          'Submitted batch transactions are written into the shared wallet logs flow alongside swap, DCA, and lending actions.',
+                          'Submitted batch transactions are written into the shared StarkZap registry flow alongside swap, DCA, and lending actions.',
                         ]}
                       />
                     </div>
@@ -1045,7 +1116,7 @@ export function SdkPage() {
                       <RoutePill to="/batching" label="Open Batching" />
                       <FilePill path="src/pages/BatchingPage.tsx" />
                       <FilePill path="src/hooks/useStarkZapActions.ts" />
-                      <FilePill path="src/lib/starkzapLogs.ts" />
+                      <FilePill path="src/lib/starkzapActivityRegistry.ts" />
                     </div>
                   </div>
                 </div>

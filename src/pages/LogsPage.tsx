@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import {
   Blocks,
   ExternalLink,
+  FileBadge2,
   RefreshCcw,
   Shield,
   Trophy,
@@ -10,14 +11,17 @@ import {
 import { Button } from '@/components/ui/button';
 import { CopyButton } from '@/components/ui/copy-button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { formatAddress } from '@/lib/constants';
+import { useStarkZapLogs } from '@/hooks/useStarkZapLogs';
+import { formatAddress, getVoyagerContractUrl, CONTRACTS } from '@/lib/constants';
 import { type OnchainActivityEntry, useOnchainActivityFeed } from '@/hooks/useOnchainActivityFeed';
+import { getStarkZapLogAmountText, type StarkZapLogEntry } from '@/lib/starkzapLogs';
 
 const CATEGORY_META = {
   factory: { color: '#FFB457', icon: Blocks, label: 'Factory' },
   circle: { color: '#7AE7C7', icon: Users, label: 'Circle' },
   reputation: { color: '#FFE66D', icon: Trophy, label: 'Reputation' },
   collateral: { color: '#7CC8FF', icon: Shield, label: 'Collateral' },
+  starkzap: { color: '#B5F36B', icon: FileBadge2, label: 'StarkZap' },
 } as const;
 
 type FeedCategory = keyof typeof CATEGORY_META;
@@ -76,6 +80,31 @@ function mapContractEntry(entry: OnchainActivityEntry): LogsFeedEntry {
   };
 }
 
+function mapSharedStarkZapEntry(entry: StarkZapLogEntry): LogsFeedEntry {
+  const amountLabel = getStarkZapLogAmountText(entry);
+
+  return {
+    id: entry.id,
+    category: 'starkzap',
+    title: entry.title,
+    valueText: amountLabel || entry.provider,
+    valueDetail: entry.executionMode === 'sponsored' ? 'Sponsored execution' : 'User pays',
+    eventLabel: `${entry.kind.toUpperCase()} · ${entry.provider}`,
+    tone: entry.status === 'failed' ? 'warning' : 'highlight',
+    updatedLabel: new Date(entry.updatedAt).toLocaleString(),
+    updatedAtSort: new Date(entry.updatedAt).getTime(),
+    actor: entry.account,
+    sourceLabel: 'StarkZap Registry',
+    sourceAddress: CONTRACTS.STARKZAP_ACTIVITY_REGISTRY,
+    sourceUrl: CONTRACTS.STARKZAP_ACTIVITY_REGISTRY !== '0x0'
+      ? getVoyagerContractUrl(CONTRACTS.STARKZAP_ACTIVITY_REGISTRY)
+      : null,
+    summary: entry.summary,
+    explorerUrl: entry.explorerUrl,
+    blockNumber: entry.blockNumber ?? null,
+  };
+}
+
 export function LogsPage() {
   const {
     entries,
@@ -85,13 +114,21 @@ export function LogsPage() {
     lastUpdatedAt,
     refresh,
   } = useOnchainActivityFeed();
+  const {
+    error: starkZapError,
+    hasConfiguredRegistry,
+    lastUpdatedAt: starkZapLastUpdatedAt,
+    logs: starkZapLogs,
+    refresh: refreshStarkZapLogs,
+  } = useStarkZapLogs();
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all');
   const [selectedEntry, setSelectedEntry] = useState<LogsFeedEntry | null>(null);
   const [manualRefreshing, setManualRefreshing] = useState(false);
 
   const feedEntries = useMemo(
-    () => entries.map(mapContractEntry).sort((left, right) => right.updatedAtSort - left.updatedAtSort),
-    [entries],
+    () => [...entries.map(mapContractEntry), ...starkZapLogs.map(mapSharedStarkZapEntry)]
+      .sort((left, right) => right.updatedAtSort - left.updatedAtSort),
+    [entries, starkZapLogs],
   );
 
   const filteredEntries = useMemo(() => {
@@ -111,12 +148,16 @@ export function LogsPage() {
     factory: feedEntries.filter((entry) => entry.category === 'factory').length,
     reputation: feedEntries.filter((entry) => entry.category === 'reputation').length,
     collateral: feedEntries.filter((entry) => entry.category === 'collateral').length,
+    starkzap: feedEntries.filter((entry) => entry.category === 'starkzap').length,
   }), [feedEntries]);
+  const combinedError = error || starkZapError;
+  const hasAnySource = hasConfiguredContracts || hasConfiguredRegistry;
+  const syncedAt = Math.max(lastUpdatedAt || 0, starkZapLastUpdatedAt || 0) || null;
 
   const handleRefresh = async () => {
     try {
       setManualRefreshing(true);
-      await refresh();
+      await Promise.all([refresh(), refreshStarkZapLogs()]);
     } finally {
       setManualRefreshing(false);
     }
@@ -124,18 +165,19 @@ export function LogsPage() {
 
   return (
     <div className="space-y-4 pb-4">
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         {[
-          { label: 'Total records', value: stats.total },
-          { label: 'Circle events', value: stats.circles },
-          { label: 'Factory events', value: stats.factory },
-          { label: 'Reputation + collateral', value: stats.reputation + stats.collateral },
+          { label: 'Total records', value: stats.total, bg: 'bg-[#B5F36B]', border: 'border-[#9ad255]/30' },
+          { label: 'Circle events', value: stats.circles, bg: 'bg-[#FFB457]', border: 'border-[#e09938]/30' },
+          { label: 'Factory events', value: stats.factory, bg: 'bg-[#A48DFF]', border: 'border-[#8a6fe0]/30' },
+          { label: 'Reputation + collateral', value: stats.reputation + stats.collateral, bg: 'bg-[#7AE7C7]', border: 'border-[#5cc5a1]/30' },
+          { label: 'StarkZap actions', value: stats.starkzap, bg: 'bg-[#7CC8FF]', border: 'border-[#66b8ef]/30' },
         ].map((item) => (
-          <div key={item.label} className="neo-panel p-4">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+          <div key={item.label} className={`rounded-[18px] border px-4 py-4 shadow-[0_18px_40px_-24px_rgba(15,23,42,0.16)] ${item.bg} ${item.border}`}>
+            <p className="whitespace-nowrap text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-950/70">
               {item.label}
             </p>
-            <p className="mt-3 font-display text-2xl font-semibold tracking-[-0.04em] text-foreground">
+            <p className="mt-3 font-display text-2xl font-semibold tracking-[-0.04em] text-slate-950">
               {item.value}
             </p>
           </div>
@@ -143,7 +185,7 @@ export function LogsPage() {
       </section>
 
       <section className="neo-panel p-4 md:p-5">
-        <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="mb-5 space-y-4">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
               Feed
@@ -156,13 +198,19 @@ export function LogsPage() {
             </p>
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            {lastUpdatedAt ? (
-              <div className="neo-chip">
-                Synced {new Date(lastUpdatedAt).toLocaleTimeString()}
+          <div className="flex flex-wrap items-center gap-2">
+            {syncedAt ? (
+              <div className="neo-chip whitespace-nowrap px-2.5 py-1 tracking-[0.14em]">
+                Synced {new Date(syncedAt).toLocaleTimeString()}
               </div>
             ) : null}
-            <Button variant="outline" size="sm" onClick={() => void handleRefresh()} disabled={manualRefreshing}>
+            <Button
+              variant="sky"
+              size="sm"
+              onClick={() => void handleRefresh()}
+              disabled={manualRefreshing}
+              className="px-2.5"
+            >
               <RefreshCcw className={`h-4 w-4 ${manualRefreshing ? 'animate-spin' : ''}`} />
               {manualRefreshing ? 'Refreshing...' : 'Refresh'}
             </Button>
@@ -172,15 +220,16 @@ export function LogsPage() {
               ['factory', 'Factory'],
               ['reputation', 'Reputation'],
               ['collateral', 'Collateral'],
+              ['starkzap', 'StarkZap'],
             ] as const).map(([value, label]) => (
               <button
                 key={value}
                 type="button"
                 onClick={() => setCategoryFilter(value)}
-                className={`rounded-full border px-3.5 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] transition ${
+                className={`whitespace-nowrap rounded-full border px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] transition ${
                   categoryFilter === value
-                    ? 'border-[#9ad255]/35 bg-[#B5F36B] text-slate-950'
-                    : 'border-black/10 bg-black/[0.03] text-muted-foreground hover:bg-black/[0.045] dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/8'
+                    ? 'border-[#66b8ef]/35 bg-[#7CC8FF] text-slate-950'
+                    : 'border-black/10 bg-black/[0.03] text-foreground/82 hover:bg-black/[0.045] hover:text-foreground dark:border-white/10 dark:bg-white/5 dark:text-white/82 dark:hover:bg-white/8 dark:hover:text-white'
                 }`}
               >
                 {label}
@@ -189,15 +238,15 @@ export function LogsPage() {
           </div>
         </div>
 
-        {error ? (
+        {combinedError ? (
           <div className="mb-4 rounded-[22px] border border-rose-500/20 bg-rose-500/10 px-4 py-4 text-sm text-rose-700 dark:text-rose-100">
-            {error}
+            {combinedError}
           </div>
         ) : null}
 
-        {!hasConfiguredContracts ? (
+        {!hasAnySource ? (
           <div className="rounded-[24px] border border-dashed border-black/10 px-4 py-12 text-center text-sm text-muted-foreground dark:border-white/10">
-            No contract activity sources are configured yet.
+            No shared activity sources are configured yet.
           </div>
         ) : isLoading && feedEntries.length === 0 ? (
           <div className="rounded-[24px] border border-dashed border-black/10 px-4 py-12 text-center text-sm text-muted-foreground dark:border-white/10">
@@ -269,7 +318,9 @@ export function LogsPage() {
                     <div>
                       <DialogTitle>{selectedEntry.title}</DialogTitle>
                       <DialogDescription className="mt-2 text-sm leading-6 text-muted-foreground">
-                        {selectedMeta.label} contract event
+                        {selectedEntry.category === 'starkzap'
+                          ? `${selectedMeta.label} registry event`
+                          : `${selectedMeta.label} contract event`}
                       </DialogDescription>
                     </div>
                   </div>
@@ -347,7 +398,7 @@ export function LogsPage() {
               </div>
 
               <div className="mt-5 flex flex-wrap gap-3">
-                <Button asChild>
+                <Button variant="sky" asChild>
                   <a
                     href={selectedEntry.explorerUrl}
                     target="_blank"

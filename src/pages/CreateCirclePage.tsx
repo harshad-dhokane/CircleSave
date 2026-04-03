@@ -16,6 +16,7 @@ import {
   useStarkZapActions,
 } from '@/hooks/useStarkZapActions';
 import { Button } from '@/components/ui/button';
+import { ProcessInfoButton } from '@/components/help/ProcessInfoButton';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -54,7 +55,12 @@ export function CreateCirclePage() {
   const navigate = useNavigate();
   const { isConnected } = useWallet();
   const { createCircle, isSubmitting, voyagerUrl, error: createError } = useCreateCircle();
-  const { dcaProviderOptions, launchCircleWithAutomation } = useStarkZapActions();
+  const {
+    dcaProviderOptions,
+    launchCircleWithAutomation,
+    recommendedExecutionMode,
+    supportsSponsoredExecution,
+  } = useStarkZapActions();
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -70,6 +76,9 @@ export function CreateCirclePage() {
   const [automationFrequency, setAutomationFrequency] = useState<StarkZapDcaFrequency>('P1W');
   const [automationProvider, setAutomationProvider] = useState<StarkZapDcaProviderId>('avnu');
   const [isLaunchingAutomation, setIsLaunchingAutomation] = useState(false);
+  const feeMode = recommendedExecutionMode === 'sponsored' && supportsSponsoredExecution
+    ? 'sponsored'
+    : 'user_pays';
 
   const totalPot = BigInt(Math.floor(parseFloat(monthlyAmount) || 0)) * BigInt(maxMembers) * BigInt(1e18);
   const collateralAmount = BigInt(Math.floor(parseFloat(monthlyAmount) || 0)) * BigInt(collateralRatio) / BigInt(100) * BigInt(1e18);
@@ -112,7 +121,7 @@ export function CreateCirclePage() {
             frequency: automationFrequency,
             providerId: automationProvider,
           },
-          feeMode: 'user_pays',
+          feeMode,
         });
 
         toast.success(
@@ -182,6 +191,43 @@ export function CreateCirclePage() {
     <div className="space-y-4 pb-4">
       <div className="grid gap-4 xl:grid-cols-[1.08fr_0.92fr]">
         <section className="neo-panel p-4 md:p-5">
+          <div className="mb-5 flex items-start justify-between gap-3 border-b border-black/8 pb-5 dark:border-white/10">
+            <div className="min-w-0">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                Step 1
+              </p>
+              <h2 className="mt-1 font-display text-[1.3rem] font-semibold tracking-[-0.04em] text-foreground">
+                Circle setup
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Define the group, contribution size, access style, and member count before you review or add automation.
+              </p>
+            </div>
+            <ProcessInfoButton
+              title="Create circle setup"
+              description="These fields define the core circle before anyone joins."
+              items={[
+                {
+                  label: 'Circle type',
+                  description: 'Open circles allow direct joins, approval circles collect requests first, and invite-only circles keep membership tightly controlled.',
+                },
+                {
+                  label: 'Monthly amount',
+                  description: 'This is the amount each member is expected to contribute for the round.',
+                },
+                {
+                  label: 'Members and collateral',
+                  description: 'Member count sets the rotation length. Collateral ratio controls how much protection members lock relative to the monthly amount.',
+                },
+                {
+                  label: 'Start simple',
+                  description: 'If this is your first run, use a short name, a clear description, and a moderate member count such as 5 to 10.',
+                },
+              ]}
+              footer="You can create a plain circle first, or keep auto-funding on and submit both flows together."
+            />
+          </div>
+
           <div className="grid gap-5 md:grid-cols-2">
             <div className="md:col-span-2">
               <Label htmlFor="name" className="mb-2 block text-sm font-semibold">Circle name</Label>
@@ -284,7 +330,7 @@ export function CreateCirclePage() {
             <Button variant="outline" onClick={() => navigate('/circles')}>
               Cancel
             </Button>
-            <Button onClick={handleCreate} disabled={!canSubmit || isBusy}>
+            <Button variant="amber" onClick={handleCreate} disabled={!canSubmit || isBusy}>
               {isBusy ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -310,18 +356,18 @@ export function CreateCirclePage() {
           <section className="neo-panel p-4 md:p-5">
             <div className="mb-4 grid gap-3 sm:grid-cols-3">
               {[
-                { label: 'Monthly', value: `${monthlyAmount || '0'} STRK` },
-                { label: 'Members', value: maxMembers },
-                { label: 'Collateral', value: `${(collateralRatio / 100).toFixed(2)}x` },
+                { label: 'Monthly', value: `${monthlyAmount || '0'} STRK`, bg: 'bg-[#B5F36B]', border: 'border-[#9ad255]/30', text: 'text-slate-950' },
+                { label: 'Members', value: maxMembers, bg: 'bg-[#FFB457]', border: 'border-[#e09938]/30', text: 'text-slate-950' },
+                { label: 'Collateral', value: `${(collateralRatio / 100).toFixed(2)}x`, bg: 'bg-[#A48DFF]', border: 'border-[#8a6fe0]/30', text: 'text-slate-950' },
               ].map((item) => (
                 <div
                   key={item.label}
-                  className="rounded-[16px] border border-black/10 bg-black/[0.03] px-3.5 py-3 dark:border-white/10 dark:bg-white/5"
+                  className={`rounded-[16px] border px-3.5 py-3 shadow-[0_16px_36px_-22px_rgba(15,23,42,0.16)] ${item.bg} ${item.border}`}
                 >
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  <p className={`text-[10px] font-semibold uppercase tracking-[0.16em] ${item.text} opacity-70`}>
                     {item.label}
                   </p>
-                  <p className="mt-1 text-sm font-semibold text-foreground">{item.value}</p>
+                  <p className={`mt-1 text-sm font-semibold ${item.text}`}>{item.value}</p>
                 </div>
               ))}
             </div>
@@ -329,13 +375,33 @@ export function CreateCirclePage() {
             <div className="mb-4 flex items-center justify-between gap-3">
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                  Summary
+                  Step 2
                 </p>
                 <h3 className="font-display text-[1.25rem] font-semibold tracking-[-0.04em] text-foreground">
                   Review
                 </h3>
               </div>
-              <div className="neo-chip">{getCircleTypeLabel(circleType)}</div>
+              <div className="flex items-center gap-2">
+                <div className="neo-chip">{getCircleTypeLabel(circleType)}</div>
+                <ProcessInfoButton
+                  title="Circle review"
+                  description="This panel shows the exact circle you are about to submit."
+                  items={[
+                    {
+                      label: 'Monthly and total pot',
+                      description: 'Monthly is the expected contribution for one member. Total pot is the estimated amount the full group will rotate through.',
+                    },
+                    {
+                      label: 'Collateral',
+                      description: 'Collateral is calculated from your monthly amount and ratio. It is designed to protect the group if someone misses a payment.',
+                    },
+                    {
+                      label: 'When to submit',
+                      description: 'Submit when these values match the structure you want new members to see and join.',
+                    },
+                  ]}
+                />
+              </div>
             </div>
 
             <div className="space-y-3">
@@ -370,13 +436,37 @@ export function CreateCirclePage() {
             <div className="mb-4 flex items-center justify-between gap-3">
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                  Optional automation
+                  Step 3
                 </p>
                 <h3 className="font-display text-[1.25rem] font-semibold tracking-[-0.04em] text-foreground">
                   Auto-funding
                 </h3>
               </div>
-              <Switch checked={automationEnabled} onCheckedChange={setAutomationEnabled} />
+              <div className="flex items-center gap-2">
+                <Switch checked={automationEnabled} onCheckedChange={setAutomationEnabled} />
+                <ProcessInfoButton
+                  title="Circle auto-funding"
+                  description="Automation is optional. It adds a recurring StarkZap DCA plan alongside the circle."
+                  items={[
+                    {
+                      label: 'Sell token and budget',
+                      description: 'Choose the asset you want to spend and the total budget available for the recurring plan.',
+                    },
+                    {
+                      label: 'Per cycle and frequency',
+                      description: 'Per cycle controls how much budget is used each run. Frequency controls how often the order executes.',
+                    },
+                    {
+                      label: 'Provider',
+                      description: 'The provider controls where the DCA order routes. Use the one with the strongest live support for your pair.',
+                    },
+                    {
+                      label: 'When to disable',
+                      description: 'Turn automation off if you only want the circle itself and prefer to fund manually later.',
+                    },
+                  ]}
+                />
+              </div>
             </div>
 
             {automationEnabled ? (

@@ -946,7 +946,7 @@ export function useCircleDetail(circleId: string) {
     return () => {
       cancelled = true;
     };
-  }, [circle?.contractAddress, circle?.currentMembers, circle?.currentMonth, circle?.status]);
+  }, [circle, circle?.contractAddress, circle?.currentMembers, circle?.currentMonth, circle?.status]);
 
   return {
     circle,

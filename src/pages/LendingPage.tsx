@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ExternalLink,
@@ -7,6 +7,7 @@ import {
   ShieldCheck,
   Wallet,
 } from 'lucide-react';
+import { ProcessInfoButton } from '@/components/help/ProcessInfoButton';
 import { Button } from '@/components/ui/button';
 import { CopyButton } from '@/components/ui/copy-button';
 import { Input } from '@/components/ui/input';
@@ -18,7 +19,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
-  type StarkZapExecutionMode,
   type StarkZapLendingHealthView,
   type StarkZapLendingStrategy,
   type StarkZapMarketView,
@@ -50,7 +50,9 @@ export function LendingPage() {
     loadLendingMarkets,
     loadLendingPositions,
     quoteLendingHealth,
+    recommendedExecutionMode,
     repayToLending,
+    supportsSponsoredExecution,
     withdrawFromLending,
     withdrawMaxFromLending,
   } = useStarkZapActions();
@@ -66,13 +68,15 @@ export function LendingPage() {
   const [activeAction, setActiveAction] = useState<'submit' | 'health' | 'max' | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const feeMode: StarkZapExecutionMode = 'user_pays';
+  const feeMode = recommendedExecutionMode === 'sponsored' && supportsSponsoredExecution
+    ? 'sponsored'
+    : 'user_pays';
   const moduleStats = useStarkZapModuleStats('lending');
 
   const requiresPair = action === 'borrow' || action === 'repay';
   const requiresAmount = action !== 'withdraw_max';
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     try {
       setRefreshing(true);
       const [nextMarkets, nextPositions] = await Promise.all([
@@ -86,12 +90,12 @@ export function LendingPage() {
     } finally {
       setRefreshing(false);
     }
-  };
+  }, [loadLendingMarkets, loadLendingPositions]);
 
   useEffect(() => {
     if (!isWalletReady) return;
     void refresh();
-  }, [isWalletReady]);
+  }, [isWalletReady, refresh]);
 
   const handlePreviewHealth = async () => {
     if (!requiresPair) return;
@@ -189,6 +193,42 @@ export function LendingPage() {
       <div className="grid gap-4 xl:items-start xl:grid-cols-[1.08fr_0.92fr]">
         <section className="space-y-4">
           <section className="neo-panel p-4 md:p-5">
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  Lending
+                </p>
+                <h2 className="mt-1 font-display text-[1.3rem] font-semibold tracking-[-0.04em] text-foreground">
+                  Action setup
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Choose the lending action, preview risk when needed, then submit the market transaction you want.
+                </p>
+              </div>
+              <ProcessInfoButton
+                title="Lending action setup"
+                description="This page supports deposit, withdraw, withdraw max, borrow, and repay actions."
+                items={[
+                  {
+                    label: 'Action',
+                    description: 'Choose what you want to do first. Deposits and withdrawals use one asset, while borrow and repay also involve collateral.',
+                  },
+                  {
+                    label: 'Asset vs collateral',
+                    description: 'Debt asset is what you borrow or repay. Collateral asset is what secures the borrowed position.',
+                  },
+                  {
+                    label: 'Preview tools',
+                    description: 'Use Max borrow and Preview health before borrowing or repaying so you understand the likely risk profile.',
+                  },
+                  {
+                    label: 'Submit only when ready',
+                    description: 'The final button sends the transaction to the lending protocol once the setup matches your intended move.',
+                  },
+                ]}
+              />
+            </div>
+
             <div className="mb-4 flex flex-wrap gap-2">
               <div className="neo-chip">
                 <Wallet className="h-4 w-4" />
@@ -216,11 +256,11 @@ export function LendingPage() {
             </div>
 
             <div className="mb-5 grid gap-3 sm:flex sm:flex-wrap">
-              <Button variant="outline" onClick={() => void refresh()} disabled={!isWalletReady || refreshing} className="w-full sm:w-auto">
+              <Button variant="outline" onClick={() => void refresh()} disabled={!isWalletReady || refreshing} className="w-full border-[#5cc5a1]/24 hover:border-[#5cc5a1]/36 hover:bg-[#7AE7C7]/14 dark:hover:bg-[#7AE7C7]/14 sm:w-auto">
                 <RefreshCcw className="h-4 w-4" />
                 {refreshing ? 'Refreshing...' : 'Refresh'}
               </Button>
-              <Button variant="outline" asChild className="w-full sm:w-auto">
+              <Button variant="mint" asChild className="w-full sm:w-auto">
                 <Link to="/logs">
                   <FileText className="h-4 w-4" />
                   Logs
@@ -294,7 +334,7 @@ export function LendingPage() {
                             onClick={() => setAmount(preset)}
                             className={`rounded-full border px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] transition ${
                               amount === preset
-                                ? 'border-[#9ad255]/35 bg-[#B5F36B] text-slate-950'
+                                ? 'border-[#5cc5a1]/34 bg-[#7AE7C7] text-slate-950'
                                 : 'border-black/10 bg-black/[0.03] text-muted-foreground hover:bg-black/[0.045] dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/8'
                             }`}
                           >
@@ -311,16 +351,16 @@ export function LendingPage() {
 
             <div className="mt-5 grid gap-3 sm:flex sm:flex-wrap">
               {action === 'borrow' ? (
-                <Button variant="outline" onClick={handleMaxBorrow} disabled={activeAction !== null || !isWalletReady} className="w-full sm:w-auto">
+                <Button variant="outline" onClick={handleMaxBorrow} disabled={activeAction !== null || !isWalletReady} className="w-full border-[#5cc5a1]/24 hover:border-[#5cc5a1]/36 hover:bg-[#7AE7C7]/14 dark:hover:bg-[#7AE7C7]/14 sm:w-auto">
                   {activeAction === 'max' ? 'Checking...' : 'Max borrow'}
                 </Button>
               ) : null}
               {requiresPair ? (
-                <Button variant="outline" onClick={handlePreviewHealth} disabled={activeAction !== null || !isWalletReady} className="w-full sm:w-auto">
+                <Button variant="outline" onClick={handlePreviewHealth} disabled={activeAction !== null || !isWalletReady} className="w-full border-[#5cc5a1]/24 hover:border-[#5cc5a1]/36 hover:bg-[#7AE7C7]/14 dark:hover:bg-[#7AE7C7]/14 sm:w-auto">
                   {activeAction === 'health' ? 'Previewing...' : 'Preview health'}
                 </Button>
               ) : null}
-              <Button onClick={handleSubmit} disabled={activeAction !== null || !isWalletReady} className="w-full sm:w-auto">
+              <Button variant="mint" onClick={handleSubmit} disabled={activeAction !== null || !isWalletReady} className="w-full sm:w-auto">
                 {activeAction === 'submit' ? 'Submitting...' : LENDING_ACTIONS.find((item) => item.value === action)?.label || 'Submit'}
               </Button>
             </div>
@@ -376,7 +416,27 @@ export function LendingPage() {
                   Risk preview
                 </h3>
               </div>
-              <ShieldCheck className="h-5 w-5 text-[#B5F36B]" />
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="h-5 w-5 text-[#B5F36B]" />
+                <ProcessInfoButton
+                  title="Lending risk preview"
+                  description="This section helps you judge how a borrow or repay action could affect the position."
+                  items={[
+                    {
+                      label: 'Simulation',
+                      description: 'OK means the protocol simulation did not flag an immediate problem. Risky means the preview found a likely issue or revert reason.',
+                    },
+                    {
+                      label: 'Current vs projected',
+                      description: 'Current values show the existing position. Projected values estimate the position after the planned action.',
+                    },
+                    {
+                      label: 'Max borrow',
+                      description: 'This gives a live reference for the highest borrow estimate based on the selected collateral and debt pair.',
+                    },
+                  ]}
+                />
+              </div>
             </div>
 
             {health ? (

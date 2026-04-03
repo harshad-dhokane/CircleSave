@@ -7,6 +7,7 @@ import {
   Plus,
   Wallet,
 } from 'lucide-react';
+import { ProcessInfoButton } from '@/components/help/ProcessInfoButton';
 import { Button } from '@/components/ui/button';
 import { CopyButton } from '@/components/ui/copy-button';
 import { Input } from '@/components/ui/input';
@@ -47,12 +48,21 @@ function formatLocalAmount(value: number) {
 
 export function BatchingPage() {
   const { isConnected, address } = useWallet();
-  const { isWalletReady, previewBatchTransfer, executeBatchTransfer } = useStarkZapActions();
+  const {
+    executeBatchTransfer,
+    isWalletReady,
+    previewBatchTransfer,
+    recommendedExecutionMode,
+    supportsSponsoredExecution,
+  } = useStarkZapActions();
   const [items, setItems] = useState<StarkZapBatchTransferItem[]>(DEFAULT_ITEMS);
   const [preview, setPreview] = useState<StarkZapBatchTransferPreview | null>(null);
   const [lastTx, setLastTx] = useState<{ hash: string; explorerUrl: string } | null>(null);
   const [activeAction, setActiveAction] = useState<'preview' | 'execute' | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const feeMode = recommendedExecutionMode === 'sponsored' && supportsSponsoredExecution
+    ? 'sponsored'
+    : 'user_pays';
   const moduleStats = useStarkZapModuleStats('batch');
 
   useEffect(() => {
@@ -141,7 +151,7 @@ export function BatchingPage() {
     try {
       setActiveAction('preview');
       setErrorMessage(null);
-      setPreview(await previewBatchTransfer({ items }));
+      setPreview(await previewBatchTransfer({ items, feeMode }));
     } catch (error) {
       setPreview(null);
       setErrorMessage(error instanceof Error ? error.message : 'Batch preview failed');
@@ -154,7 +164,7 @@ export function BatchingPage() {
     try {
       setActiveAction('execute');
       setErrorMessage(null);
-      setLastTx(await executeBatchTransfer({ items }));
+      setLastTx(await executeBatchTransfer({ items, feeMode }));
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Batch execution failed');
     } finally {
@@ -181,6 +191,42 @@ export function BatchingPage() {
     <div className="space-y-4 pb-4">
       <div className="grid gap-4 xl:items-start xl:grid-cols-[1.08fr_0.92fr]">
         <section className="neo-panel p-4 md:p-5">
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                Batch
+              </p>
+              <h2 className="mt-1 font-display text-[1.3rem] font-semibold tracking-[-0.04em] text-foreground">
+                Transfer builder
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Build multiple transfers, preview the atomic batch, then submit them in one transaction.
+              </p>
+            </div>
+            <ProcessInfoButton
+              title="Batch transfer builder"
+              description="Batching lets you group several token transfers into one on-chain submission."
+              items={[
+                {
+                  label: 'Rows',
+                  description: 'Each row is one recipient, token, and amount. Add rows until the batch matches the transfer plan you want.',
+                },
+                {
+                  label: 'Use my address',
+                  description: 'This quickly fills all recipient rows with your connected wallet so you can test or duplicate transfers faster.',
+                },
+                {
+                  label: 'Preview first',
+                  description: 'Preview checks the grouped call structure before you submit the full atomic batch.',
+                },
+                {
+                  label: 'What batching means',
+                  description: 'If the batch succeeds, every row is sent together. If it fails, none of the rows execute.',
+                },
+              ]}
+            />
+          </div>
+
           <div className="mb-4 flex flex-wrap gap-2">
             <div className="neo-chip">
               <Wallet className="h-4 w-4" />
@@ -208,14 +254,14 @@ export function BatchingPage() {
           </div>
 
           <div className="mb-5 grid gap-3 sm:flex sm:flex-wrap">
-            <Button variant="outline" onClick={fillSelfTransferDemo} className="w-full sm:w-auto">
+            <Button variant="outline" onClick={fillSelfTransferDemo} className="w-full border-[#e09938]/24 hover:border-[#e09938]/36 hover:bg-[#FFB457]/14 dark:hover:bg-[#FFB457]/14 sm:w-auto">
               Use my address
             </Button>
-            <Button variant="outline" onClick={addTransferRow} className="w-full sm:w-auto">
+            <Button variant="amber" onClick={addTransferRow} className="w-full sm:w-auto">
               <Plus className="h-4 w-4" />
               Add row
             </Button>
-            <Button variant="outline" asChild className="w-full sm:w-auto">
+            <Button variant="amber" asChild className="w-full sm:w-auto">
               <Link to="/logs">
                 <FileText className="h-4 w-4" />
                 Logs
@@ -231,7 +277,7 @@ export function BatchingPage() {
                 onClick={() => applyAmountPreset(preset)}
                 className={`rounded-full border px-3.5 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] transition ${
                   items.every((item) => item.amount === preset)
-                    ? 'border-[#9ad255]/35 bg-[#B5F36B] text-slate-950'
+                    ? 'border-[#e09938]/34 bg-[#FFB457] text-slate-950'
                     : 'border-black/10 bg-black/[0.03] text-muted-foreground hover:bg-black/[0.045] dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/8'
                 }`}
               >
@@ -296,10 +342,15 @@ export function BatchingPage() {
           </div>
 
           <div className="mt-5 grid gap-3 sm:flex sm:flex-wrap">
-            <Button variant="outline" onClick={handlePreview} disabled={activeAction !== null || !isWalletReady} className="w-full sm:w-auto">
+            <Button
+              variant="outline"
+              onClick={handlePreview}
+              disabled={activeAction !== null || !isWalletReady}
+              className="w-full border-[#e09938]/24 hover:border-[#e09938]/36 hover:bg-[#FFB457]/14 dark:hover:bg-[#FFB457]/14 sm:w-auto"
+            >
               {activeAction === 'preview' ? 'Previewing...' : 'Preview'}
             </Button>
-            <Button onClick={handleExecute} disabled={activeAction !== null || !isWalletReady} className="w-full sm:w-auto">
+            <Button variant="amber" onClick={handleExecute} disabled={activeAction !== null || !isWalletReady} className="w-full sm:w-auto">
               {activeAction === 'execute' ? 'Submitting...' : 'Send batch'}
             </Button>
           </div>
@@ -322,7 +373,23 @@ export function BatchingPage() {
                   Token totals
                 </h3>
               </div>
-              <Layers3 className="h-5 w-5 text-[#7CC8FF]" />
+              <div className="flex items-center gap-2">
+                <Layers3 className="h-5 w-5 text-[#7CC8FF]" />
+                <ProcessInfoButton
+                  title="Batch breakdown"
+                  description="The breakdown groups your rows by token so you can verify totals before submitting."
+                  items={[
+                    {
+                      label: 'Token totals',
+                      description: 'Each card combines all rows for one token into a single visible total.',
+                    },
+                    {
+                      label: 'Transfer count',
+                      description: 'Rows show how many transfers for that token are included in the current batch.',
+                    },
+                  ]}
+                />
+              </div>
             </div>
 
             <div className="space-y-3">
@@ -348,6 +415,20 @@ export function BatchingPage() {
                   Simulation
                 </h3>
               </div>
+              <ProcessInfoButton
+                title="Batch simulation"
+                description="The preview summarizes the batch before you spend gas on the final submission."
+                items={[
+                  {
+                    label: 'Summary',
+                    description: 'The summary explains how many grouped transfers and token types are currently part of the atomic batch.',
+                  },
+                  {
+                    label: 'Calls',
+                    description: 'Calls show the contract-call complexity of the batch, which helps you understand what the transaction is doing.',
+                  },
+                ]}
+              />
             </div>
 
             {preview ? (

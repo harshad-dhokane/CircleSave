@@ -1769,3 +1769,123 @@ export const ERC20_ABI = [
     ]
   }
 ] as const;
+
+export const STARKZAP_ACTIVITY_REGISTRY_ABI = [
+  {
+    "type": "impl",
+    "name": "StarkZapActivityRegistryImpl",
+    "interface_name": "circlesave::types::IStarkZapActivityRegistry"
+  },
+  {
+    "type": "struct",
+    "name": "core::integer::u256",
+    "members": [
+      { "name": "low", "type": "core::integer::u128" },
+      { "name": "high", "type": "core::integer::u128" }
+    ]
+  },
+  {
+    "type": "interface",
+    "name": "circlesave::types::IStarkZapActivityRegistry",
+    "items": [
+      {
+        "type": "function",
+        "name": "record_activity",
+        "inputs": [
+          { "name": "module", "type": "core::felt252" },
+          { "name": "action", "type": "core::felt252" },
+          { "name": "provider", "type": "core::felt252" },
+          { "name": "execution_mode", "type": "core::felt252" },
+          { "name": "volume_token_a", "type": "core::felt252" },
+          { "name": "volume_amount_a", "type": "core::integer::u256" },
+          { "name": "volume_token_b", "type": "core::felt252" },
+          { "name": "volume_amount_b", "type": "core::integer::u256" },
+          { "name": "volume_token_c", "type": "core::felt252" },
+          { "name": "volume_amount_c", "type": "core::integer::u256" },
+          { "name": "count", "type": "core::integer::u32" },
+          { "name": "reference_one", "type": "core::felt252" },
+          { "name": "reference_two", "type": "core::felt252" }
+        ],
+        "outputs": [],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "get_module_action_count",
+        "inputs": [{ "name": "module", "type": "core::felt252" }],
+        "outputs": [{ "type": "core::integer::u64" }],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "get_actor_module_action_count",
+        "inputs": [
+          { "name": "actor", "type": "core::starknet::contract_address::ContractAddress" },
+          { "name": "module", "type": "core::felt252" }
+        ],
+        "outputs": [{ "type": "core::integer::u64" }],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "get_module_token_total",
+        "inputs": [
+          { "name": "module", "type": "core::felt252" },
+          { "name": "token", "type": "core::felt252" }
+        ],
+        "outputs": [{ "type": "core::integer::u256" }],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "get_actor_module_token_total",
+        "inputs": [
+          { "name": "actor", "type": "core::starknet::contract_address::ContractAddress" },
+          { "name": "module", "type": "core::felt252" },
+          { "name": "token", "type": "core::felt252" }
+        ],
+        "outputs": [{ "type": "core::integer::u256" }],
+        "state_mutability": "view"
+      }
+    ]
+  },
+  {
+    "type": "constructor",
+    "name": "constructor",
+    "inputs": [{ "name": "owner", "type": "core::starknet::contract_address::ContractAddress" }]
+  },
+  {
+    "type": "event",
+    "name": "circlesave::starkzap_activity_registry::StarkZapActivityRegistry::ActivityRecorded",
+    "kind": "struct",
+    "members": [
+      { "name": "actor", "type": "core::starknet::contract_address::ContractAddress", "kind": "key" },
+      { "name": "module", "type": "core::felt252", "kind": "key" },
+      { "name": "action", "type": "core::felt252", "kind": "data" },
+      { "name": "provider", "type": "core::felt252", "kind": "data" },
+      { "name": "execution_mode", "type": "core::felt252", "kind": "data" },
+      { "name": "volume_token_a", "type": "core::felt252", "kind": "data" },
+      { "name": "volume_amount_a", "type": "core::integer::u256", "kind": "data" },
+      { "name": "volume_token_b", "type": "core::felt252", "kind": "data" },
+      { "name": "volume_amount_b", "type": "core::integer::u256", "kind": "data" },
+      { "name": "volume_token_c", "type": "core::felt252", "kind": "data" },
+      { "name": "volume_amount_c", "type": "core::integer::u256", "kind": "data" },
+      { "name": "count", "type": "core::integer::u32", "kind": "data" },
+      { "name": "reference_one", "type": "core::felt252", "kind": "data" },
+      { "name": "reference_two", "type": "core::felt252", "kind": "data" },
+      { "name": "timestamp", "type": "core::integer::u64", "kind": "data" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "circlesave::starkzap_activity_registry::StarkZapActivityRegistry::Event",
+    "kind": "enum",
+    "variants": [
+      {
+        "name": "ActivityRecorded",
+        "type": "circlesave::starkzap_activity_registry::StarkZapActivityRegistry::ActivityRecorded",
+        "kind": "nested"
+      }
+    ]
+  }
+] as const;

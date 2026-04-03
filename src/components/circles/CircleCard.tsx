@@ -18,6 +18,7 @@ interface CircleCardProps {
   circle: Circle;
   variant?: 'default' | 'compact';
   onSelect?: (circle: Circle) => void;
+  viewerRole?: 'owner' | 'joined' | null;
 }
 
 function getStatusClasses(status: string) {
@@ -82,7 +83,7 @@ function getAvailabilityMeta(circle: Circle, readyToStart: boolean, spotsLeft: n
   };
 }
 
-export function CircleCard({ circle, variant = 'default', onSelect }: CircleCardProps) {
+export function CircleCard({ circle, variant = 'default', onSelect, viewerRole = null }: CircleCardProps) {
   const spotsLeft = getCircleSpotsLeft(circle);
   const readyToStart = isCircleReadyToStart(circle);
   const collateralAmount = (circle.monthlyAmount * BigInt(circle.collateralRatio)) / 100n;
@@ -103,26 +104,38 @@ export function CircleCard({ circle, variant = 'default', onSelect }: CircleCard
 
   const cardBody = (
     <>
-      <div className="flex items-start justify-between gap-2.5">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
+      <div className="min-w-0 space-y-2">
+        <div className="flex items-center justify-between gap-2.5">
           <span
             className="inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]"
             style={{ backgroundColor: `${categoryColor}20`, color: categoryColor }}
           >
             {categoryLabel}
           </span>
+          <span className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            {circleTypeLabel}
+          </span>
+        </div>
+        <div className="flex min-h-[26px] flex-wrap items-center gap-2">
+          {viewerRole === 'owner' ? (
+            <span className="inline-flex whitespace-nowrap rounded-full border border-[#9ad255]/35 bg-[#B5F36B] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-950 shadow-[0_12px_24px_-18px_rgba(120,170,43,0.4)]">
+              You Own
+            </span>
+          ) : null}
+          {viewerRole === 'joined' ? (
+            <span className="inline-flex whitespace-nowrap rounded-full bg-[#7CC8FF]/14 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-foreground">
+              Joined
+            </span>
+          ) : null}
           <span
             className={cn(
-              'inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]',
+              'inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]',
               getStatusClasses(circle.status),
             )}
           >
             {circle.status}
           </span>
         </div>
-        <span className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-          {circleTypeLabel}
-        </span>
       </div>
 
       <div className="mt-3 min-w-0">
@@ -135,7 +148,7 @@ export function CircleCard({ circle, variant = 'default', onSelect }: CircleCard
           {circle.name}
         </h3>
         <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-          <span>{formatAddress(circle.creator)}</span>
+          <span>{viewerRole === 'owner' ? 'Owner: You' : `Owner ${formatAddress(circle.creator)}`}</span>
           <span className="h-1 w-1 rounded-full bg-current/50" />
           <span>{circle.currentMembers}/{circle.maxMembers} members</span>
         </div>

@@ -1,10 +1,7 @@
 import type {
   AccountInterface,
-  Call,
-  EstimateFeeResponseOverhead,
   ProviderInterface,
   Signature,
-  TypedData,
 } from 'starknet';
 import { type PaymasterDetails } from 'starknet';
 import { BaseWallet } from '../../node_modules/starkzap/dist/src/wallet/base.js';
@@ -12,9 +9,7 @@ import { Tx } from '../../node_modules/starkzap/dist/src/tx/index.js';
 import {
   type ChainId,
   type FeeMode,
-  type PreflightOptions,
   type PreflightResult,
-  type ExecuteOptions,
   fromAddress,
 } from '../../node_modules/starkzap/dist/src/types/index.js';
 import { AvnuDcaProvider } from '../../node_modules/starkzap/dist/src/dca/avnu.js';
@@ -35,6 +30,21 @@ type ConnectedStarkZapWalletOptions = {
   chainId: ChainId;
   defaultFeeMode?: FeeMode;
 };
+
+type StakingConfigCarrier = {
+  stakingConfig?: unknown;
+};
+
+type BaseWalletExecuteCalls = Parameters<BaseWallet['execute']>[0];
+type BaseWalletExecuteOptions = Parameters<BaseWallet['execute']>[1];
+type BaseWalletSignMessageInput = Parameters<BaseWallet['signMessage']>[0];
+type BaseWalletPreflightOptions = Parameters<BaseWallet['preflight']>[0];
+type BaseWalletEstimateFeeCalls = Parameters<BaseWallet['estimateFee']>[0];
+type BaseWalletEstimateFeeResult = Awaited<ReturnType<BaseWallet['estimateFee']>>;
+type StarkZapAccount =
+  import('../../node_modules/starkzap/node_modules/starknet/dist/index.js').Account;
+type StarkZapProvider =
+  import('../../node_modules/starkzap/node_modules/starknet/dist/index.js').RpcProvider;
 
 function toSponsoredDetails(): PaymasterDetails {
   return {
@@ -65,7 +75,7 @@ export class ConnectedStarkZapWallet extends BaseWallet {
 
     // Set staking config AFTER super() so chainId is available
     try {
-      (this as any).stakingConfig = getStakingPreset(options.chainId);
+      (this as unknown as StakingConfigCarrier).stakingConfig = getStakingPreset(options.chainId);
     } catch {
       // gracefully skip if preset not available
     }
@@ -75,7 +85,10 @@ export class ConnectedStarkZapWallet extends BaseWallet {
   }
 
   async isDeployed(): Promise<boolean> {
-    return checkDeployed(this.rpcProvider as any, this.address);
+    return checkDeployed(
+      this.rpcProvider as unknown as Parameters<typeof checkDeployed>[0],
+      this.address,
+    );
   }
 
   async ensureReady(): Promise<void> {
@@ -89,50 +102,66 @@ export class ConnectedStarkZapWallet extends BaseWallet {
     throw new Error('Deploying the connected wallet account is not supported from CircleSave.');
   }
 
-  async execute(calls: Call[], options?: ExecuteOptions): Promise<Tx> {
+  async execute(calls: BaseWalletExecuteCalls, options?: BaseWalletExecuteOptions): Promise<Tx> {
     const feeMode = options?.feeMode ?? this.defaultFeeModeValue;
 
     if (feeMode === 'sponsored') {
       const paymasterAwareAccount = this.connectedAccount as AccountInterface & {
         executePaymasterTransaction?: (
-          calls: Call[],
+          calls: BaseWalletExecuteCalls,
           paymasterDetails: PaymasterDetails,
         ) => Promise<{ transaction_hash: string }>;
       };
 
       if (typeof paymasterAwareAccount.executePaymasterTransaction !== 'function') {
         const fallbackResult = await this.connectedAccount.execute(calls);
-        return new Tx(fallbackResult.transaction_hash, this.rpcProvider as any, this.chainIdValue);
+        return new Tx(
+          fallbackResult.transaction_hash,
+          this.rpcProvider as unknown as ConstructorParameters<typeof Tx>[1],
+          this.chainIdValue,
+        );
       }
 
       const result = await paymasterAwareAccount.executePaymasterTransaction(
         calls,
         toSponsoredDetails(),
       );
-      return new Tx(result.transaction_hash, this.rpcProvider as any, this.chainIdValue);
+      return new Tx(
+        result.transaction_hash,
+        this.rpcProvider as unknown as ConstructorParameters<typeof Tx>[1],
+        this.chainIdValue,
+      );
     }
 
     const result = await this.connectedAccount.execute(calls);
-    return new Tx(result.transaction_hash, this.rpcProvider as any, this.chainIdValue);
+    return new Tx(
+      result.transaction_hash,
+      this.rpcProvider as unknown as ConstructorParameters<typeof Tx>[1],
+      this.chainIdValue,
+    );
   }
 
-  async signMessage(typedData: TypedData): Promise<Signature> {
+  async signMessage(typedData: BaseWalletSignMessageInput): Promise<Signature> {
     return this.connectedAccount.signMessage(typedData);
   }
 
-  async preflight(options: PreflightOptions): Promise<PreflightResult> {
-    return preflightTransaction(this as any, this.connectedAccount as any, {
-      ...options,
-      feeMode: options.feeMode ?? this.defaultFeeModeValue,
-    });
+  async preflight(options: BaseWalletPreflightOptions): Promise<PreflightResult> {
+    return preflightTransaction(
+      this as unknown as Parameters<typeof preflightTransaction>[0],
+      this.connectedAccount as unknown as Parameters<typeof preflightTransaction>[1],
+      {
+        ...options,
+        feeMode: options.feeMode ?? this.defaultFeeModeValue,
+      },
+    );
   }
 
-  getAccount(): any {
-    return this.connectedAccount as any;
+  getAccount(): StarkZapAccount {
+    return this.connectedAccount as unknown as StarkZapAccount;
   }
 
-  getProvider(): any {
-    return this.rpcProvider as any;
+  getProvider(): StarkZapProvider {
+    return this.rpcProvider as unknown as StarkZapProvider;
   }
 
   getChainId(): ChainId {
@@ -147,10 +176,10 @@ export class ConnectedStarkZapWallet extends BaseWallet {
     return 'connected-wallet';
   }
 
-  async estimateFee(calls: Call[]): Promise<EstimateFeeResponseOverhead> {
+  async estimateFee(calls: BaseWalletEstimateFeeCalls): Promise<BaseWalletEstimateFeeResult> {
     const feeAccount = this.connectedAccount as AccountInterface & {
-      estimateInvokeFee?: (calls: Call[]) => Promise<EstimateFeeResponseOverhead>;
-      estimateFee?: (calls: Call[]) => Promise<EstimateFeeResponseOverhead>;
+      estimateInvokeFee?: (calls: BaseWalletEstimateFeeCalls) => Promise<BaseWalletEstimateFeeResult>;
+      estimateFee?: (calls: BaseWalletEstimateFeeCalls) => Promise<BaseWalletEstimateFeeResult>;
     };
 
     if (typeof feeAccount.estimateInvokeFee === 'function') {

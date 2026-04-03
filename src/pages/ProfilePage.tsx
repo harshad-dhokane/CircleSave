@@ -140,38 +140,38 @@ export function ProfilePage() {
     <div className="space-y-4 pb-4">
       <section className="neo-panel p-3.5 md:p-4">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-          <div className="flex min-w-0 items-center gap-4 rounded-[18px] border border-black/10 bg-black/[0.03] px-4 py-3 dark:border-white/10 dark:bg-white/5">
+          <div className="flex min-w-0 items-center gap-4 rounded-[18px] border border-black/10 bg-black/[0.03] px-4 py-3.5 dark:border-white/10 dark:bg-white/5">
             <div
-              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[16px] border border-white/10 text-lg font-semibold text-slate-950"
+              className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[18px] border border-white/10 text-xl font-semibold text-slate-950"
               style={{ backgroundColor: levelColor }}
             >
               {address.slice(2, 4).toUpperCase()}
             </div>
             <div className="min-w-0">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                 Wallet
               </p>
               <div className="mt-1 flex flex-wrap items-center gap-2">
-                <p className="truncate text-sm font-semibold text-foreground">{formatAddress(address)}</p>
+                <p className="truncate text-base font-semibold text-foreground md:text-lg">{formatAddress(address)}</p>
                 <CopyButton value={address} successMessage="Wallet address copied" />
               </div>
             </div>
           </div>
 
           {[
-            { label: 'Level', value: levelName },
-            { label: 'Reputation', value: stats?.reputationScore || 0 },
-            { label: 'Circles', value: circlesLoading ? '...' : circles.length },
-            { label: 'Balance', value: balanceLabel },
+            { label: 'Level', value: levelName, bg: 'bg-[#B5F36B]', border: 'border-[#9ad255]/30', text: 'text-slate-950' },
+            { label: 'Reputation', value: stats?.reputationScore || 0, bg: 'bg-[#FFB457]', border: 'border-[#e09938]/30', text: 'text-slate-950' },
+            { label: 'Circles', value: circlesLoading ? '...' : circles.length, bg: 'bg-[#A48DFF]', border: 'border-[#8a6fe0]/30', text: 'text-slate-950' },
+            { label: 'Balance', value: balanceLabel, bg: 'bg-[#7CC8FF]', border: 'border-[#66b8ef]/30', text: 'text-slate-950' },
           ].map((item) => (
             <div
               key={item.label}
-              className="rounded-[16px] border border-black/10 bg-black/[0.03] px-3.5 py-3 dark:border-white/10 dark:bg-white/5"
+              className={`rounded-[16px] border px-4 py-3.5 shadow-[0_16px_36px_-22px_rgba(15,23,42,0.16)] ${item.bg} ${item.border}`}
             >
-              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+              <p className={`text-[11px] font-semibold uppercase tracking-[0.16em] ${item.text} opacity-70`}>
                 {item.label}
               </p>
-              <p className="mt-1 text-sm font-semibold text-foreground">{item.value}</p>
+              <p className={`mt-1.5 text-lg font-semibold leading-tight ${item.text} md:text-[1.35rem]`}>{item.value}</p>
             </div>
           ))}
         </div>

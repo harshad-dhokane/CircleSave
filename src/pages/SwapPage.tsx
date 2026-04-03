@@ -6,6 +6,7 @@ import {
   FileText,
   Wallet,
 } from 'lucide-react';
+import { ProcessInfoButton } from '@/components/help/ProcessInfoButton';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -16,7 +17,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
-  type StarkZapExecutionMode,
   type StarkZapSwapComparison,
   type StarkZapSwapProviderId,
   type StarkZapTokenKey,
@@ -52,6 +52,8 @@ export function SwapPage() {
     compareSwapProviders,
     executeSwap,
     isWalletReady,
+    recommendedExecutionMode,
+    supportsSponsoredExecution,
     swapProviderOptions,
   } = useStarkZapActions();
   const [tokenIn, setTokenIn] = useState<StarkZapTokenKey>('USDC');
@@ -62,7 +64,9 @@ export function SwapPage() {
   const [lastTx, setLastTx] = useState<{ hash: string; explorerUrl: string } | null>(null);
   const [activeAction, setActiveAction] = useState<'preview' | 'execute' | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const feeMode: StarkZapExecutionMode = 'user_pays';
+  const feeMode = recommendedExecutionMode === 'sponsored' && supportsSponsoredExecution
+    ? 'sponsored'
+    : 'user_pays';
   const moduleStats = useStarkZapModuleStats('swap');
 
   const selectedComparison = useMemo(
@@ -132,12 +136,48 @@ export function SwapPage() {
     <div className="space-y-4 pb-4">
       <div className="grid gap-4 xl:items-start xl:grid-cols-[minmax(0,1.06fr)_minmax(320px,0.94fr)]">
         <section className="neo-panel p-4 md:p-5">
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                Swap
+              </p>
+              <h2 className="mt-1 font-display text-[1.3rem] font-semibold tracking-[-0.04em] text-foreground">
+                Route setup
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Pick the sell and buy asset, compare live providers, then submit the route you want to use.
+              </p>
+            </div>
+            <ProcessInfoButton
+              title="Swap route setup"
+              description="This page helps you compare swap routes before sending a transaction."
+              items={[
+                {
+                  label: 'Sell and buy assets',
+                  description: 'Sell asset is what leaves your wallet. Buy asset is what you expect to receive after execution.',
+                },
+                {
+                  label: 'Provider',
+                  description: 'Best route automatically uses the strongest current quote. Manual provider lets you force a specific route such as AVNU or Ekubo.',
+                },
+                {
+                  label: 'Compare first',
+                  description: 'Use Compare to preview outputs and price impact before you send the final swap transaction.',
+                },
+                {
+                  label: 'If you feel stuck',
+                  description: 'Start with one of the preset routes and a small amount, then compare before swapping.',
+                },
+              ]}
+            />
+          </div>
+
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
             <div className="flex flex-wrap gap-2">
               <div className="neo-chip">{selectedPreset?.label || `${tokenIn} to ${tokenOut}`}</div>
               <div className="neo-chip">{providerId === 'best' ? 'Best route' : 'Manual provider'}</div>
             </div>
-            <Button variant="outline" size="sm" asChild className="w-full sm:w-auto">
+            <Button variant="sky" size="sm" asChild className="w-full sm:w-auto">
               <Link to="/logs">
                 <FileText className="h-4 w-4" />
                 Logs
@@ -170,13 +210,13 @@ export function SwapPage() {
                 <button
                   key={route.label}
                   type="button"
-                  onClick={() => applyPresetRoute(route)}
-                  className={`rounded-full border px-3.5 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] transition ${
-                    active
-                      ? 'border-[#9ad255]/35 bg-[#B5F36B] text-slate-950'
+                    onClick={() => applyPresetRoute(route)}
+                    className={`rounded-full border px-3.5 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] transition ${
+                      active
+                      ? 'border-[#66b8ef]/35 bg-[#7CC8FF] text-slate-950'
                       : 'border-black/10 bg-black/[0.03] text-muted-foreground hover:bg-black/[0.05] dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/8'
-                  }`}
-                >
+                    }`}
+                  >
                   {route.label}
                 </button>
               );
@@ -256,7 +296,7 @@ export function SwapPage() {
                       onClick={() => setAmount(preset)}
                       className={`rounded-full border px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] transition ${
                         amount === preset
-                          ? 'border-[#9ad255]/35 bg-[#B5F36B] text-slate-950'
+                          ? 'border-[#66b8ef]/35 bg-[#7CC8FF] text-slate-950'
                           : 'border-black/10 bg-black/[0.03] text-muted-foreground hover:bg-black/[0.05] dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/8'
                       }`}
                     >
@@ -270,10 +310,15 @@ export function SwapPage() {
           </div>
 
           <div className="mt-5 grid gap-3 sm:flex sm:flex-wrap">
-            <Button variant="outline" onClick={handlePreview} disabled={activeAction !== null || !isWalletReady} className="w-full sm:w-auto">
+            <Button
+              variant="outline"
+              onClick={handlePreview}
+              disabled={activeAction !== null || !isWalletReady}
+              className="w-full border-[#66b8ef]/26 hover:border-[#66b8ef]/38 hover:bg-[#7CC8FF]/14 dark:hover:bg-[#7CC8FF]/14 sm:w-auto"
+            >
               {activeAction === 'preview' ? 'Comparing...' : 'Compare'}
             </Button>
-            <Button onClick={handleExecute} disabled={activeAction !== null || !isWalletReady} className="w-full sm:w-auto">
+            <Button variant="sky" onClick={handleExecute} disabled={activeAction !== null || !isWalletReady} className="w-full sm:w-auto">
               {activeAction === 'execute' ? 'Submitting...' : 'Swap'}
             </Button>
           </div>
@@ -287,13 +332,29 @@ export function SwapPage() {
 
         <div className="space-y-4">
           <section className="neo-panel p-4 md:p-5">
-            <div className="mb-4">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                Execution
-              </p>
-              <h3 className="mt-1 font-display text-[1.2rem] font-semibold tracking-[-0.04em] text-foreground">
-                Result
-              </h3>
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  Execution
+                </p>
+                <h3 className="mt-1 font-display text-[1.2rem] font-semibold tracking-[-0.04em] text-foreground">
+                  Result
+                </h3>
+              </div>
+              <ProcessInfoButton
+                title="Swap result"
+                description="The result panel shows the quote you are currently about to send."
+                items={[
+                  {
+                    label: 'Estimated output',
+                    description: 'This is the expected receive amount from the selected comparison, not a guaranteed settlement amount.',
+                  },
+                  {
+                    label: 'Calls and price impact',
+                    description: 'Calls show how many contract calls the route uses. Price impact helps you judge how much the swap moves the market.',
+                  },
+                ]}
+              />
             </div>
 
             {selectedComparison ? (
@@ -342,7 +403,27 @@ export function SwapPage() {
                   Comparison
                 </h3>
               </div>
-              <div className="neo-chip">{comparisons.length}</div>
+              <div className="flex items-center gap-2">
+                <div className="neo-chip">{comparisons.length}</div>
+                <ProcessInfoButton
+                  title="Swap provider comparison"
+                  description="This section lets you understand which provider currently has the strongest route."
+                  items={[
+                    {
+                      label: 'Best badge',
+                      description: 'The Best badge marks the strongest current comparison returned by the route query.',
+                    },
+                    {
+                      label: 'Active badge',
+                      description: 'Active shows which provider you will use if you submit right now.',
+                    },
+                    {
+                      label: 'When to override',
+                      description: 'Override Best only when you intentionally want a specific provider or want to compare route behavior manually.',
+                    },
+                  ]}
+                />
+              </div>
             </div>
 
             {comparisons.length > 0 ? (
@@ -355,7 +436,11 @@ export function SwapPage() {
                   return (
                     <div
                       key={comparison.providerId}
-                      className="flex items-center justify-between gap-3 rounded-[16px] border border-black/10 bg-black/[0.03] px-3.5 py-3 dark:border-white/10 dark:bg-white/5"
+                      className={`flex items-center justify-between gap-3 rounded-[16px] border px-3.5 py-3 ${
+                        isSelected
+                          ? 'border-[#66b8ef]/34 bg-[#7CC8FF]/18 dark:bg-[#7CC8FF]/14'
+                          : 'border-black/10 bg-black/[0.03] dark:border-white/10 dark:bg-white/5'
+                      }`}
                     >
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold text-foreground">{comparison.provider}</p>
@@ -370,7 +455,7 @@ export function SwapPage() {
                           </span>
                         ) : null}
                         {isSelected ? (
-                          <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-950">
+                          <span className="rounded-full bg-[#7CC8FF] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-950">
                             Active
                           </span>
                         ) : null}

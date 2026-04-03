@@ -11,7 +11,7 @@ function FooterNavLink({ link }: { link: FooterLink }) {
   return (
     <Link
       to={link.to}
-      className="block w-fit text-sm leading-6 text-white/58 transition-colors hover:text-white"
+      className="block w-fit text-[15px] leading-7 text-white/58 transition-colors hover:text-white sm:text-base"
     >
       {link.label}
     </Link>
@@ -56,12 +56,12 @@ export function Footer() {
                   <p className="font-display text-2xl font-semibold tracking-[-0.04em] text-white">
                     CircleSave
                   </p>
-                  <p className="text-[11px] uppercase tracking-[0.2em] text-white/45">
+                  <p className="text-[13px] uppercase tracking-[0.18em] text-white/45">
                     Management Workspace
                   </p>
                 </div>
               </div>
-              <p className="max-w-md text-sm leading-7 text-white/58 sm:text-[15px]">
+              <p className="max-w-md text-[15px] leading-7 text-white/58 sm:text-base">
                 A cleaner operating shell for savings circles, StarkZap-powered routing, DCA, lending, and wallet activity on Starknet.
               </p>
               <div className="mt-6 flex flex-wrap gap-2">
@@ -85,7 +85,7 @@ export function Footer() {
             </div>
 
             <div className="min-w-0">
-              <p className="mb-4 text-[11px] font-semibold uppercase tracking-[0.2em] text-white/45">Product</p>
+              <p className="mb-4 text-[13px] font-semibold uppercase tracking-[0.18em] text-white/45">Product</p>
               <div className="flex flex-col items-start gap-2.5">
                 {footerLinkGroups.product.map((link) => (
                   <FooterNavLink key={link.label} link={link} />
@@ -94,7 +94,7 @@ export function Footer() {
             </div>
 
             <div className="min-w-0">
-              <p className="mb-4 text-[11px] font-semibold uppercase tracking-[0.2em] text-white/45">Resources</p>
+              <p className="mb-4 text-[13px] font-semibold uppercase tracking-[0.18em] text-white/45">Resources</p>
               <div className="flex flex-col items-start gap-2.5">
                 {footerLinkGroups.resources.map((link) => (
                   <FooterNavLink key={link.label} link={link} />
@@ -103,7 +103,7 @@ export function Footer() {
             </div>
 
             <div className="min-w-0">
-              <p className="mb-4 text-[11px] font-semibold uppercase tracking-[0.2em] text-white/45">Legal</p>
+              <p className="mb-4 text-[13px] font-semibold uppercase tracking-[0.18em] text-white/45">Legal</p>
               <div className="flex flex-col items-start gap-2.5">
                 {footerLinkGroups.legal.map((link) => (
                   <FooterNavLink key={link.label} link={link} />
@@ -112,7 +112,7 @@ export function Footer() {
             </div>
           </div>
 
-          <div className="mt-12 grid gap-3 border-t border-white/10 pt-6 text-sm text-white/45 md:grid-cols-2 md:items-center">
+          <div className="mt-12 grid gap-3 border-t border-white/10 pt-6 text-[15px] text-white/45 md:grid-cols-2 md:items-center sm:text-base">
             <p>Built on Starknet for circles, routing, and operational transparency.</p>
             <p className="md:text-right">© 2026 CircleSave. All rights reserved.</p>
           </div>

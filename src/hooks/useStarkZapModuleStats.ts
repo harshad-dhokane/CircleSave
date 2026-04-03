@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 import { getStarkZapLogDetails, type StarkZapLogKind } from '@/lib/starkzapLogs';
-import { useStarkZapLogs } from '@/hooks/useStarkZapLogs';
-import { useWallet } from '@/hooks/useWallet';
+import { useMyStarkZapActivity } from '@/hooks/useMyStarkZapActivity';
 
 type ModuleStats = {
   totalTransactions: number;
@@ -46,14 +45,11 @@ function formatVolumeLabel(totals: Map<string, number>) {
 }
 
 export function useStarkZapModuleStats(kind: StarkZapLogKind): ModuleStats {
-  const { logs } = useStarkZapLogs();
-  const { address } = useWallet();
+  const { activity, logs } = useMyStarkZapActivity();
 
   return useMemo(() => {
     const moduleLogs = logs.filter((entry) => entry.kind === kind && entry.status !== 'failed');
-    const myLogs = address
-      ? moduleLogs.filter((entry) => entry.account.toLowerCase() === address.toLowerCase())
-      : [];
+    const myLogs = activity.filter((entry) => entry.kind === kind && entry.status !== 'failed');
     const amountTotals = new Map<string, number>();
 
     myLogs.forEach((entry) => {
@@ -93,5 +89,5 @@ export function useStarkZapModuleStats(kind: StarkZapLogKind): ModuleStats {
       myTransactions: myLogs.length,
       amountLabel: formatVolumeLabel(amountTotals),
     };
-  }, [address, kind, logs]);
+  }, [activity, kind, logs]);
 }

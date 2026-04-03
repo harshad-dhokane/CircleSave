@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ExternalLink, Loader2, Plus, Search, SlidersHorizontal, X } from 'lucide-react';
 import { CircleCard } from '@/components/circles/CircleCard';
+import { ProcessInfoButton } from '@/components/help/ProcessInfoButton';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -51,9 +52,11 @@ const STATUS_OPTIONS = [
 
 function CirclePreviewDialog({
   circle,
+  viewerRole,
   onOpenChange,
 }: {
   circle: Circle | null;
+  viewerRole: 'owner' | 'joined' | null;
   onOpenChange: (open: boolean) => void;
 }) {
   if (!circle) return null;
@@ -98,6 +101,7 @@ function CirclePreviewDialog({
             ['Collateral', formatAmount(collateralAmount)],
             ['Access', getCircleTypeLabel(circle.circleType)],
             ['Creator', formatAddress(circle.creator)],
+            ['Your role', viewerRole === 'owner' ? 'Owner' : viewerRole === 'joined' ? 'Joined member' : 'Browsing'],
             ['Availability', availability],
           ].map(([label, value]) => (
             <div
@@ -150,6 +154,17 @@ export function CirclesPage() {
     ),
     [address, userCircles],
   );
+  const getViewerRole = (circle: Circle): 'owner' | 'joined' | null => {
+    if (address && addressesEqual(circle.creator, address)) {
+      return 'owner';
+    }
+
+    if (joinedCircleIds.has(circle.id)) {
+      return 'joined';
+    }
+
+    return null;
+  };
 
   const circleStats = {
     total: circles.length,
@@ -206,112 +221,155 @@ export function CirclesPage() {
   return (
     <div className="space-y-4 pb-4">
       <section className="neo-panel p-4">
+        <div className="mb-4 flex items-start justify-between gap-3 border-b border-black/8 pb-4 dark:border-white/10">
+          <div className="min-w-0">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+              Circles
+            </p>
+            <h2 className="mt-1 font-display text-[1.3rem] font-semibold tracking-[-0.04em] text-foreground">
+              Browse, own, and join circles
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Filter the public list, spot circles you own instantly, and open any circle to join, request access, or manage it.
+            </p>
+          </div>
+          <ProcessInfoButton
+            title="Circles workflow"
+            description="Use the circles page to understand what each circle is, what your role is, and what action is available next."
+            items={[
+              {
+                label: 'Ownership',
+                description: 'Cards now mark circles you created as “You own this”. Use “Owned By Me” to focus on circles you manage, or “Joined By Me” for circles you already entered.',
+              },
+              {
+                label: 'Availability',
+                description: 'Open circles let you join directly. Approval circles let you send a request. Filled circles are waiting for launch or already in progress.',
+              },
+              {
+                label: 'Preview',
+                description: 'Open any card to review the creator, collateral, circle type, and your current role before moving into the full detail page.',
+              },
+              {
+                label: 'Best next step',
+                description: 'If you want control, create a circle. If you want to participate, open one that still has spots and follow its detail-page action.',
+              },
+            ]}
+            footer={address ? 'Because your wallet is connected, the page can tell you whether you own a circle or already joined it.' : 'Connect your wallet to unlock ownership and joined-member labels on the cards.'}
+          />
+        </div>
+
         <div className="mb-4 grid gap-3 border-b border-black/8 pb-4 dark:border-white/10 sm:grid-cols-3">
           {[
-            { label: 'Total circles', value: circleStats.total },
-            { label: 'Started', value: circleStats.started },
-            { label: 'Pending', value: circleStats.pending },
+            { label: 'Total circles', value: circleStats.total, bg: 'bg-[#B5F36B]', border: 'border-[#9ad255]/30', text: 'text-slate-950' },
+            { label: 'Started', value: circleStats.started, bg: 'bg-[#FFB457]', border: 'border-[#e09938]/30', text: 'text-slate-950' },
+            { label: 'Pending', value: circleStats.pending, bg: 'bg-[#A48DFF]', border: 'border-[#8a6fe0]/30', text: 'text-slate-950' },
           ].map((item) => (
             <div
               key={item.label}
-              className="rounded-[16px] border border-black/10 bg-black/[0.03] px-3.5 py-3 dark:border-white/10 dark:bg-white/5"
+              className={`rounded-[16px] border px-3.5 py-3 shadow-[0_16px_36px_-22px_rgba(15,23,42,0.16)] ${item.bg} ${item.border}`}
             >
-              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+              <p className={`text-[10px] font-semibold uppercase tracking-[0.16em] ${item.text} opacity-70`}>
                 {item.label}
               </p>
-              <p className="mt-1 text-base font-semibold text-foreground">{item.value}</p>
+              <p className={`mt-1 text-base font-semibold ${item.text}`}>{item.value}</p>
             </div>
           ))}
         </div>
 
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
-          <div className="relative flex-1">
-            <Search className="pointer-events-none absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-muted-foreground" />
+        <div className="grid gap-2 lg:grid-cols-[minmax(180px,1fr)_126px_126px_96px_auto] lg:items-center">
+          <div className="relative min-w-0">
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-foreground/65 dark:text-white/65" />
             <Input
               placeholder="Search circles"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
-              className="pl-11"
+              className="pl-11 text-foreground placeholder:text-foreground/55 dark:placeholder:text-white/55"
             />
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2 xl:flex xl:items-center">
-            <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-              <SelectTrigger className="w-full xl:w-48">
-                <SelectValue placeholder="Category" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Categories</SelectItem>
-                {CATEGORIES.map((category) => (
-                  <SelectItem key={category.value} value={category.value}>
-                    {category.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Category" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Categories</SelectItem>
+              {CATEGORIES.map((category) => (
+                <SelectItem key={category.value} value={category.value}>
+                  {category.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-            <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-              <SelectTrigger className="w-full xl:w-44">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                {STATUS_OPTIONS.map((status) => (
-                  <SelectItem key={status.value} value={status.value}>
-                    {status.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              {STATUS_OPTIONS.map((status) => (
+                <SelectItem key={status.value} value={status.value}>
+                  {status.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-            <Select value={sortBy} onValueChange={setSortBy}>
-              <SelectTrigger className="w-full xl:w-48">
-                <SelectValue placeholder="Sort by" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="newest">Newest</SelectItem>
-                <SelectItem value="almostFull">Almost Full</SelectItem>
-                <SelectItem value="lowestAmount">Lowest Amount</SelectItem>
-                <SelectItem value="highestAmount">Highest Amount</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          <Select value={sortBy} onValueChange={setSortBy}>
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Sort by" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="newest">Newest</SelectItem>
+              <SelectItem value="almostFull">Almost Full</SelectItem>
+              <SelectItem value="lowestAmount">Lowest Amount</SelectItem>
+              <SelectItem value="highestAmount">Highest Amount</SelectItem>
+            </SelectContent>
+          </Select>
 
-          <div className="flex flex-wrap items-center gap-2 xl:ml-auto">
+          <div className="flex flex-wrap items-center gap-1 lg:flex-nowrap lg:justify-end">
             <Button
               size="sm"
-              variant={ownershipFilter === 'created' ? 'default' : 'outline'}
+              variant={ownershipFilter === 'created' ? 'mint' : 'outline'}
               onClick={() => setOwnershipFilter((current) => current === 'created' ? 'all' : 'created')}
               disabled={!address}
+              className="h-10 rounded-xl px-2 text-[11px]"
             >
-              My Circles
+              Owned
             </Button>
             <Button
               size="sm"
-              variant={ownershipFilter === 'joined' ? 'default' : 'outline'}
+              variant={ownershipFilter === 'joined' ? 'sky' : 'outline'}
               onClick={() => setOwnershipFilter((current) => current === 'joined' ? 'all' : 'joined')}
               disabled={!address}
+              className="h-10 rounded-xl px-2 text-[11px]"
             >
-              Joined By Me
+              Joined
             </Button>
-            <div className="neo-chip">
+            <div className="neo-chip h-10 whitespace-nowrap px-2 py-0 text-[9px] tracking-[0.12em]">
               <SlidersHorizontal className="h-4 w-4" />
               {sortedCircles.length} results
             </div>
-            <Button size="sm" asChild>
+            <Button size="sm" variant="amber" asChild className="h-10 rounded-xl px-2 text-[11px]">
               <Link to="/circles/create">
                 <Plus className="h-4 w-4" />
-                Create Circle
+                Create
               </Link>
             </Button>
-          </div>
 
-          {activeFilterCount > 0 ? (
-            <Button variant="outline" size="sm" onClick={clearFilters}>
-              <X className="h-4 w-4" />
-              Clear
-            </Button>
-          ) : null}
+            {activeFilterCount > 0 ? (
+              <Button variant="outline" size="sm" onClick={clearFilters} className="h-10 rounded-xl px-2 text-[11px]">
+                <X className="h-4 w-4" />
+                Clear
+              </Button>
+            ) : null}
+          </div>
         </div>
+
+        {!address ? (
+          <p className="mt-3 text-sm text-muted-foreground">
+            Connect your wallet to unlock the `Owned By Me` and `Joined By Me` filters.
+          </p>
+        ) : null}
       </section>
 
       {showLoading ? (
@@ -339,6 +397,7 @@ export function CirclesPage() {
                 circle={circle}
                 variant="compact"
                 onSelect={setSelectedCircle}
+                viewerRole={getViewerRole(circle)}
               />
             </div>
           ))}
@@ -370,6 +429,7 @@ export function CirclesPage() {
 
       <CirclePreviewDialog
         circle={selectedCircle}
+        viewerRole={selectedCircle ? getViewerRole(selectedCircle) : null}
         onOpenChange={(open) => {
           if (!open) {
             setSelectedCircle(null);

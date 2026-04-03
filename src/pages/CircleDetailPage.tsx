@@ -13,6 +13,7 @@ import {
   Users,
   Wallet,
 } from 'lucide-react';
+import { ProcessInfoButton } from '@/components/help/ProcessInfoButton';
 import {
   useApproveMember,
   useCircleDetail,
@@ -217,6 +218,102 @@ export function CircleDetailPage() {
     ? formatCountdown(distributionUnlockAt - currentTime)
     : null;
   const canDistribute = canManageDistribution && hasDistributionTiming && !contributionWindowOpen;
+  const roleLabel = isCreator ? 'Owner' : isMember ? 'Member' : hasPendingRequest ? 'Applicant' : 'Visitor';
+  const nextStepMeta = (() => {
+    if (isCreator && canStart) {
+      return {
+        label: 'Next step',
+        title: 'Start the first round',
+        body: 'All member slots are filled, so you can launch the circle and begin round one when you are ready.',
+      };
+    }
+
+    if (isCreator && canManageRequests && pendingRequests.length > 0) {
+      return {
+        label: 'Next step',
+        title: 'Review join requests',
+        body: 'This circle requires approval, so new members are waiting for you to approve or reject them before the roster fills.',
+      };
+    }
+
+    if (isCreator && creatorWaitingForMembers) {
+      return {
+        label: 'Waiting',
+        title: 'Fill the remaining slots',
+        body: `Share this circle until the last ${spotsLeft} member slot${spotsLeft === 1 ? '' : 's'} is filled.`,
+      };
+    }
+
+    if (canJoinDirect) {
+      return {
+        label: 'Available now',
+        title: 'Join directly',
+        body: 'This circle is still open and does not require approval, so you can lock collateral and join immediately.',
+      };
+    }
+
+    if (canRequestJoin) {
+      return {
+        label: 'Approval needed',
+        title: 'Send a join request',
+        body: 'This circle requires creator approval. Add a short note so the owner understands why you want to join.',
+      };
+    }
+
+    if (hasPendingRequest) {
+      return {
+        label: 'Waiting',
+        title: 'Your request is pending',
+        body: 'The creator still needs to review your request. You do not need to resubmit anything right now.',
+      };
+    }
+
+    if (canManageDistribution && canDistribute) {
+      return {
+        label: 'Distribution',
+        title: 'Distribute the current pot',
+        body: 'The contribution window has ended and the round can now be settled on-chain.',
+      };
+    }
+
+    if (canManageDistribution && contributionWindowOpen) {
+      return {
+        label: 'Locked',
+        title: 'Wait for distribution unlock',
+        body: 'The round is still accepting contributions. Distribution unlocks automatically when the contribution window ends.',
+      };
+    }
+
+    if (isMember && canContribute) {
+      return {
+        label: 'Current round',
+        title: 'Contribute this cycle',
+        body: 'You are already in the circle, so your next step is to submit the round contribution before distribution.',
+      };
+    }
+
+    if (waitingForCreatorToStart) {
+      return {
+        label: 'Waiting',
+        title: 'Waiting for the owner',
+        body: 'All members are in, but only the circle owner can start the first round.',
+      };
+    }
+
+    if (canEmergencyWithdraw) {
+      return {
+        label: 'Recovery',
+        title: 'Withdraw from the failed circle',
+        body: 'This circle is marked failed. Members can use emergency withdrawal to reclaim collateral.',
+      };
+    }
+
+    return {
+      label: 'Overview',
+      title: 'Monitor this circle',
+      body: 'Use the roster, schedule, and status panels below to understand what happens next in this savings rotation.',
+    };
+  })();
 
   const ensureConnected = () => {
     if (!isConnected) {
@@ -430,6 +527,16 @@ export function CircleDetailPage() {
               <span className="rounded-full border border-black/10 bg-black/[0.03] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground dark:border-white/10 dark:bg-white/6">
                 {circleTypeLabel}
               </span>
+              {isCreator ? (
+                <span className="rounded-full bg-[#B5F36B]/16 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-foreground">
+                  You own this circle
+                </span>
+              ) : null}
+              {isMember && !isCreator ? (
+                <span className="rounded-full bg-[#7CC8FF]/14 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-foreground">
+                  Joined member
+                </span>
+              ) : null}
               {hasPendingRequest ? (
                 <span className="rounded-full bg-[#A48DFF]/14 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-foreground">
                   Request sent
@@ -446,6 +553,29 @@ export function CircleDetailPage() {
           </div>
 
           <div className="flex flex-wrap gap-2">
+            <ProcessInfoButton
+              title="Circle detail flow"
+              description="The circle page changes by role and state, so the actions here explain what you can do right now."
+              items={[
+                {
+                  label: 'Roles',
+                  description: 'Owners manage membership, start rounds, and can complete the circle. Members contribute and follow the schedule. Visitors can join or request access when slots are available.',
+                },
+                {
+                  label: 'Pending circles',
+                  description: 'Pending circles are still filling member slots. Approval circles collect requests first. Once full, the owner starts the first round.',
+                },
+                {
+                  label: 'Active circles',
+                  description: 'Active circles accept contributions for the current round, then unlock distribution after the contribution window closes.',
+                },
+                {
+                  label: 'Recovery actions',
+                  description: 'Advanced actions only appear when the contract state allows them, such as emergency withdrawal for failed circles or completion for finished rotations.',
+                },
+              ]}
+              footer="If you are unsure what to do next, check the Next step panel right below this header."
+            />
             <a
               href={getVoyagerContractUrl(circle.contractAddress)}
               target="_blank"
@@ -464,16 +594,16 @@ export function CircleDetailPage() {
 
         <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {[
-            { label: 'Members', value: `${circle.currentMembers}/${circle.maxMembers}` },
-            { label: 'Spots left', value: spotsLeft },
-            { label: 'Monthly', value: formatAmount(circle.monthlyAmount) },
-            { label: 'Collateral', value: formatAmount(collateralAmount) },
+            { label: 'Members', value: `${circle.currentMembers}/${circle.maxMembers}`, bg: 'bg-[#B5F36B]', border: 'border-[#9ad255]/30', text: 'text-slate-950' },
+            { label: 'Spots left', value: spotsLeft, bg: 'bg-[#FFB457]', border: 'border-[#e09938]/30', text: 'text-slate-950' },
+            { label: 'Monthly', value: formatAmount(circle.monthlyAmount), bg: 'bg-[#A48DFF]', border: 'border-[#8a6fe0]/30', text: 'text-slate-950' },
+            { label: 'Collateral', value: formatAmount(collateralAmount), bg: 'bg-[#7AE7C7]', border: 'border-[#5cc5a1]/30', text: 'text-slate-950' },
           ].map((item) => (
-            <div key={item.label} className="rounded-[16px] border border-black/10 bg-black/[0.03] px-3.5 py-3 dark:border-white/10 dark:bg-white/5">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+            <div key={item.label} className={`rounded-[16px] border px-3.5 py-3 shadow-[0_16px_36px_-22px_rgba(15,23,42,0.16)] ${item.bg} ${item.border}`}>
+              <p className={`text-[10px] font-semibold uppercase tracking-[0.16em] ${item.text} opacity-70`}>
                 {item.label}
               </p>
-              <p className="mt-1 text-sm font-semibold text-foreground">{item.value}</p>
+              <p className={`mt-1 text-sm font-semibold ${item.text}`}>{item.value}</p>
             </div>
           ))}
         </div>
@@ -481,9 +611,27 @@ export function CircleDetailPage() {
         <div className="mt-4 flex flex-wrap gap-2">
           <div className="neo-chip">
             <Users className="h-3.5 w-3.5" />
-            Creator {formatAddress(circle.creator)}
+            Owner {isCreator ? 'You' : formatAddress(circle.creator)}
           </div>
+          <div className="neo-chip">Your role {roleLabel}</div>
           <div className="neo-chip">Total pot {formatAmount(circle.monthlyAmount * BigInt(circle.maxMembers))}</div>
+        </div>
+
+        <div className="mt-4 rounded-[22px] border border-black/10 bg-black/[0.03] p-4 dark:border-white/10 dark:bg-white/5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                {nextStepMeta.label}
+              </p>
+              <p className="mt-2 text-[1.05rem] font-semibold text-foreground">
+                {nextStepMeta.title}
+              </p>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+                {nextStepMeta.body}
+              </p>
+            </div>
+            <div className="neo-chip">{roleLabel}</div>
+          </div>
         </div>
 
         <div className="mt-4">
@@ -492,43 +640,43 @@ export function CircleDetailPage() {
             <span className="text-muted-foreground">{Math.round(progress)}%</span>
           </div>
           <div className="neo-progress">
-            <div className="neo-progress-bar bg-[linear-gradient(90deg,#B5F36B,#7CC8FF)]" style={{ width: `${progress}%` }} />
+            <div className="neo-progress-bar bg-[#B5F36B]" style={{ width: `${progress}%` }} />
           </div>
         </div>
 
-          <div className="mt-4 flex flex-wrap gap-2">
+        <div className="mt-4 flex flex-wrap items-center gap-2">
             <span
               className="rounded-full bg-white/8 px-4 py-3 text-muted-foreground"
             >
               {circle.currentMonth > 0 ? `Round ${circle.currentMonth}` : 'Pending launch'}
-          </span>
+            </span>
           {canJoinDirect ? (
-            <Button onClick={handleJoin} disabled={joining}>
+            <Button variant="mint" onClick={handleJoin} disabled={joining}>
               {joining ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               Join circle
             </Button>
           ) : null}
           {canRequestJoin ? (
-            <Button onClick={handleOpenRequestDialog} disabled={requestingJoin}>
+            <Button variant="amber" onClick={handleOpenRequestDialog} disabled={requestingJoin}>
               <Send className="h-4 w-4" />
               Request access
             </Button>
           ) : null}
           {canContribute ? (
-            <Button variant="outline" onClick={handleContribute} disabled={contributing}>
+            <Button variant="mint" onClick={handleContribute} disabled={contributing}>
               {contributing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               Contribute {formatAmount(circle.monthlyAmount)}
             </Button>
           ) : null}
           {canStart ? (
-            <Button variant="outline" onClick={handleStart} disabled={starting}>
+            <Button variant="amber" onClick={handleStart} disabled={starting}>
               {starting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
               Start circle
             </Button>
           ) : null}
           {canManageDistribution ? (
             <Button
-              variant="outline"
+              variant="sky"
               onClick={handleDistribute}
               disabled={distributing || !canDistribute}
               className={!canDistribute ? 'disabled:opacity-75 disabled:text-foreground/80 dark:disabled:text-white/82' : undefined}
@@ -543,7 +691,7 @@ export function CircleDetailPage() {
               Emergency exit
             </Button>
           ) : null}
-          </div>
+        </div>
 
           {circle.status === 'ACTIVE' ? (
             <div className="mt-4 rounded-[22px] border border-black/10 bg-black/[0.03] p-4 dark:border-white/10 dark:bg-white/5">
@@ -672,7 +820,27 @@ export function CircleDetailPage() {
                     Pending requests
                   </h3>
                 </div>
-                <div className="neo-chip">{pendingRequests.length}</div>
+                <div className="flex items-center gap-2">
+                  <div className="neo-chip">{pendingRequests.length}</div>
+                  <ProcessInfoButton
+                    title="Approval queue"
+                    description="Approval-required circles let the owner screen applicants before they join."
+                    items={[
+                      {
+                        label: 'Approve',
+                        description: 'Approving moves the applicant into the member roster so they can join the rotation.',
+                      },
+                      {
+                        label: 'Reject',
+                        description: 'Rejecting keeps the roster unchanged. The applicant would need to submit a new request later.',
+                      },
+                      {
+                        label: 'What to review',
+                        description: 'Use the applicant address and message to decide whether the person fits this circle.',
+                      },
+                    ]}
+                  />
+                </div>
               </div>
 
               <CircleRequestsPanel
@@ -697,7 +865,27 @@ export function CircleDetailPage() {
                   Round preview
                 </h3>
               </div>
-              <Wallet className="h-5 w-5 text-[#7CC8FF]" />
+              <div className="flex items-center gap-2">
+                <Wallet className="h-5 w-5 text-[#7CC8FF]" />
+                <ProcessInfoButton
+                  title="Round schedule"
+                  description="The schedule shows the current round state and the order of upcoming months."
+                  items={[
+                    {
+                      label: 'Pending launch',
+                      description: 'The circle is full or still filling, but the owner has not started the first round yet.',
+                    },
+                    {
+                      label: 'Current',
+                      description: 'This is the active round. Members should contribute before settlement.',
+                    },
+                    {
+                      label: 'Upcoming and done',
+                      description: 'Done rounds already settled. Upcoming rounds will become active later in the rotation.',
+                    },
+                  ]}
+                />
+              </div>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
@@ -729,7 +917,27 @@ export function CircleDetailPage() {
                     Advanced actions
                   </h3>
                 </div>
-                <ShieldAlert className="h-5 w-5 text-[#FF6B6B]" />
+                <div className="flex items-center gap-2">
+                  <ShieldAlert className="h-5 w-5 text-[#FF6B6B]" />
+                  <ProcessInfoButton
+                    title="Advanced circle actions"
+                    description="These actions only appear when the contract state allows recovery or completion."
+                    items={[
+                      {
+                        label: 'Complete circle',
+                        description: 'Use this only when the full rotation has finished and the owner is ready to close the circle cleanly.',
+                      },
+                      {
+                        label: 'Emergency withdrawal',
+                        description: 'This is a recovery path for failed circles so members can reclaim collateral.',
+                      },
+                      {
+                        label: 'Why this is hidden sometimes',
+                        description: 'If the contract state does not allow a recovery or completion action, the panel stays hidden to prevent stuck flows.',
+                      },
+                    ]}
+                  />
+                </div>
               </div>
 
               <div className="space-y-3">

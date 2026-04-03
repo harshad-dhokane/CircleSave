@@ -1,4 +1,7 @@
-import { Wallet, Users, ArrowRightLeft, FileText, ArrowRight } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { ArrowRight, ArrowRightLeft, FileText, Users, Wallet } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 const steps = [
   {
@@ -6,99 +9,87 @@ const steps = [
     icon: Wallet,
     title: 'Connect Once',
     description: 'Connect with Cartridge once in the header. That same account powers circles, swap, DCA, lending, and logs.',
-    color: '#FF6B6B',
+    color: '#B5F36B',
   },
   {
     number: '02',
     icon: Users,
     title: 'Join or Create',
     description: 'Browse existing circles or create your own. Set the monthly amount, member count, and collateral ratio from one shared app flow.',
-    color: '#4ECDC4',
+    color: '#7AE7C7',
   },
   {
     number: '03',
     icon: ArrowRightLeft,
     title: 'Swap or Schedule DCA',
     description: 'Use StarkZap v2 routes inside CircleSave to swap assets or create recurring DCA orders without leaving your connected wallet session.',
-    color: '#FFE66D',
+    color: '#FFB457',
   },
   {
     number: '04',
     icon: FileText,
     title: 'Track Everything',
-    description: 'Public logs show full contract activity, while dashboard activity filters the same contract feed to your wallet and circles, with Voyager links for verification.',
-    color: '#96CEB4',
+    description: 'Public logs show full contract activity, while the dashboard filters the same feed to your wallet and circles, with Voyager links for verification.',
+    color: '#7CC8FF',
   },
-];
+] as const;
 
 export function HowItWorks() {
   return (
-    <section className="py-24 bg-[#FEFAE0] relative overflow-hidden">
-      <div className="page-shell relative z-10">
-        {/* Section Header */}
-        <div className="text-center mb-16">
-          <div className="animate-fade-in inline-block px-5 py-2.5 bg-[#4ECDC4] border-[3px] border-black mb-4">
-            <span className="font-black text-base uppercase tracking-wider text-white">How It Works</span>
-          </div>
-          <h2 className="animate-fade-in stagger-1 text-4xl md:text-5xl font-black mb-4">
-            Start Saving in{' '}
-            <span className="text-[#4ECDC4]">4 Simple Steps</span>
+    <section className="neo-panel p-5 md:p-6">
+      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div>
+          <span className="inline-flex items-center gap-2 rounded-full border border-[#7AE7C7]/24 bg-[#7AE7C7]/14 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-foreground">
+            Product Guide
+          </span>
+          <h2 className="mt-3 font-display text-[1.8rem] font-semibold tracking-[-0.05em] text-foreground md:text-[2.15rem]">
+            Start saving in four clear steps
           </h2>
-          <p className="animate-fade-in stagger-2 text-xl text-gray-600 max-w-3xl mx-auto leading-relaxed">
-            Getting started with CircleSave is easy. Follow these steps to move from community savings into
-            live StarkZap actions without switching accounts or tools.
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+            Move from community savings into live StarkZap actions without switching accounts, tabs, or tools.
           </p>
         </div>
 
-        {/* Steps */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {steps.map((step, index) => (
-            <div key={step.number} className={`relative animate-fade-in stagger-${index + 3}`}>
-              {/* Connector Line */}
-              {index < steps.length - 1 && (
-                <div className="absolute left-[calc(100%-0.35rem)] top-16 z-0 hidden h-[3px] w-10 bg-black lg:block xl:w-12">
-                  <ArrowRight className="absolute -right-1 -top-2.5 h-6 w-6 text-black" />
-                </div>
-              )}
-              
-              {/* Step Card */}
-              <div className="neo-card p-7 relative z-10 h-full">
-                {/* Step Number */}
-                <div 
-                  className="absolute -top-3 -left-3 w-12 h-12 border-[3px] border-black flex items-center justify-center font-black text-lg"
-                  style={{ backgroundColor: step.color }}
-                >
-                  <span className="text-white">{step.number}</span>
-                </div>
+        <Button asChild>
+          <Link to="/circles">
+            Open Circles
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        </Button>
+      </div>
 
-                {/* Icon */}
-                <div 
-                  className="w-16 h-16 border-[3px] border-black flex items-center justify-center mb-5 mt-4 mx-auto"
-                  style={{ backgroundColor: step.color }}
-                >
-                  <step.icon className="w-8 h-8 text-white" />
-                </div>
-
-                {/* Content */}
-                <h3 className="text-xl font-black text-center mb-3">{step.title}</h3>
-                <p className="text-gray-600 font-medium text-center text-base leading-relaxed">{step.description}</p>
+      <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {steps.map((step, index) => (
+          <article
+            key={step.number}
+            className={cn(
+              'flex h-full flex-col rounded-[22px] border border-black/10 bg-black/[0.03] p-5 shadow-[0_20px_48px_-34px_rgba(15,23,42,0.18)] dark:border-white/10 dark:bg-white/5 dark:shadow-[0_24px_62px_-38px_rgba(0,0,0,0.82)]',
+              index === 0 && 'xl:-translate-y-1',
+            )}
+          >
+            <div className="mb-5 flex items-start justify-between gap-3">
+              <span
+                className="rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]"
+                style={{ backgroundColor: `${step.color}18`, borderColor: `${step.color}55`, color: step.color }}
+              >
+                Step {step.number}
+              </span>
+              <div
+                className="flex h-11 w-11 items-center justify-center rounded-[16px] border border-white/10"
+                style={{ backgroundColor: `${step.color}26`, color: step.color, boxShadow: `0 0 18px -6px ${step.color}66` }}
+              >
+                <step.icon className="h-5 w-5" />
               </div>
             </div>
-          ))}
-        </div>
 
-        {/* CTA */}
-        <div className="animate-fade-in stagger-7 text-center mt-12">
-          <p className="text-lg font-medium text-gray-600 mb-4">
-            Ready to start your savings journey?
-          </p>
-          <a 
-            href="/circles" 
-            className="inline-flex items-center gap-2 px-10 py-5 bg-[#FF6B6B] text-white font-black text-lg border-[3px] border-black shadow-[4px_4px_0px_0px_#1a1a1a] hover:shadow-[6px_6px_0px_0px_#1a1a1a] hover:-translate-x-0.5 hover:-translate-y-0.5 transition-all"
-          >
-            Get Started Now <ArrowRight className="w-5 h-5" />
-          </a>
-        </div>
+            <h3 className="font-display text-[1.2rem] font-semibold tracking-[-0.04em] text-foreground">
+              {step.title}
+            </h3>
+            <p className="mt-3 text-sm leading-6 text-muted-foreground">
+              {step.description}
+            </p>
+          </article>
+        ))}
       </div>
     </section>
   );
