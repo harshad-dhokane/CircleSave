@@ -28,6 +28,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
+  getUnsupportedDcaPairMessage,
+  isSupportedDcaPairForProvider,
   type StarkZapDcaFrequency,
   type StarkZapDcaPreview,
   type StarkZapDcaProviderId,
@@ -54,9 +56,9 @@ const DCA_TEMPLATES: Array<{
   frequency: StarkZapDcaFrequency;
   providerId: StarkZapDcaProviderId;
 }> = [
-  { title: 'USDC to STRK', sellToken: 'USDC', buyToken: 'STRK', sellAmount: '10', sellAmountPerCycle: '2', frequency: 'P1W', providerId: 'ekubo' },
-  { title: 'ETH to STRK', sellToken: 'ETH', buyToken: 'STRK', sellAmount: '1', sellAmountPerCycle: '0.25', frequency: 'P1D', providerId: 'avnu' },
-  { title: 'STRK to ETH', sellToken: 'STRK', buyToken: 'ETH', sellAmount: '5', sellAmountPerCycle: '1', frequency: 'P1D', providerId: 'avnu' },
+  { title: 'STRK to ETH • AVNU', sellToken: 'STRK', buyToken: 'ETH', sellAmount: '5', sellAmountPerCycle: '1', frequency: 'P1D', providerId: 'avnu' },
+  { title: 'ETH to STRK • Ekubo', sellToken: 'ETH', buyToken: 'STRK', sellAmount: '1', sellAmountPerCycle: '0.25', frequency: 'P1D', providerId: 'ekubo' },
+  { title: 'STRK to ETH • Ekubo', sellToken: 'STRK', buyToken: 'ETH', sellAmount: '5', sellAmountPerCycle: '1', frequency: 'P1D', providerId: 'ekubo' },
 ];
 
 function getOrderStatusClasses(status: string) {
@@ -84,12 +86,12 @@ export function DcaPage() {
     recommendedExecutionMode,
     supportsSponsoredExecution,
   } = useStarkZapActions();
-  const [sellToken, setSellToken] = useState<StarkZapTokenKey>('USDC');
-  const [buyToken, setBuyToken] = useState<StarkZapTokenKey>('STRK');
-  const [sellAmount, setSellAmount] = useState('10');
-  const [sellAmountPerCycle, setSellAmountPerCycle] = useState('2');
-  const [frequency, setFrequency] = useState<StarkZapDcaFrequency>('P1W');
-  const [providerId, setProviderId] = useState<StarkZapDcaProviderId>('ekubo');
+  const [sellToken, setSellToken] = useState<StarkZapTokenKey>('STRK');
+  const [buyToken, setBuyToken] = useState<StarkZapTokenKey>('ETH');
+  const [sellAmount, setSellAmount] = useState('5');
+  const [sellAmountPerCycle, setSellAmountPerCycle] = useState('1');
+  const [frequency, setFrequency] = useState<StarkZapDcaFrequency>('P1D');
+  const [providerId, setProviderId] = useState<StarkZapDcaProviderId>('avnu');
   const [orderFilter, setOrderFilter] = useState<'all' | StarkZapDcaProviderId>('all');
   const [preview, setPreview] = useState<StarkZapDcaPreview | null>(null);
   const [orders, setOrders] = useState<StarkZapOrderView[]>([]);
@@ -103,6 +105,11 @@ export function DcaPage() {
     ? 'sponsored'
     : 'user_pays';
   const moduleStats = useStarkZapModuleStats('dca');
+  const providerPairMessage = sellToken === buyToken
+    ? null
+    : getUnsupportedDcaPairMessage(providerId, sellToken, buyToken);
+  const pairSupported = sellToken !== buyToken
+    && isSupportedDcaPairForProvider(providerId, sellToken, buyToken);
 
   const totalCycles = useMemo(() => {
     const total = Number.parseFloat(sellAmount);
@@ -384,11 +391,17 @@ export function DcaPage() {
               </div>
             </div>
 
+            {providerPairMessage ? (
+              <div className="mt-4 rounded-[22px] border border-[#f59e0b]/28 bg-[#f59e0b]/12 px-4 py-4 text-sm text-amber-100">
+                {providerPairMessage}
+              </div>
+            ) : null}
+
             <div className="mt-5 grid gap-3 sm:flex sm:flex-wrap">
               <Button
                 variant="outline"
                 onClick={handlePreview}
-                disabled={activeAction !== null || !isWalletReady}
+                disabled={activeAction !== null || !isWalletReady || !pairSupported}
                 className="w-full border-[#8a6fe0]/26 hover:border-[#8a6fe0]/38 hover:bg-[#A48DFF]/14 dark:hover:bg-[#A48DFF]/14 sm:w-auto"
               >
                 {activeAction === 'preview' ? 'Previewing...' : 'Preview'}
@@ -396,7 +409,7 @@ export function DcaPage() {
               <Button
                 variant="violet"
                 onClick={handleCreate}
-                disabled={activeAction !== null || !isWalletReady}
+                disabled={activeAction !== null || !isWalletReady || !pairSupported}
                 className="w-full sm:w-auto"
               >
                 {activeAction === 'create' ? 'Creating...' : 'Create order'}

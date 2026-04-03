@@ -128,6 +128,19 @@ export interface StarkZapStakingPositionView {
 const PRIMARY_TOKENS: StarkZapTokenKey[] = ['ETH', 'USDC', 'STRK'];
 const SWAP_PROVIDER_IDS: Array<Exclude<StarkZapSwapProviderId, 'best'>> = ['avnu', 'ekubo'];
 const DCA_PROVIDER_IDS: StarkZapDcaProviderId[] = ['avnu', 'ekubo'];
+const TESTED_SEPOLIA_DCA_PAIRS: Record<
+  StarkZapDcaProviderId,
+  Array<[StarkZapTokenKey, StarkZapTokenKey]>
+> = {
+  avnu: [
+    ['ETH', 'STRK'],
+    ['STRK', 'ETH'],
+  ],
+  ekubo: [
+    ['ETH', 'STRK'],
+    ['STRK', 'ETH'],
+  ],
+};
 
 function formatDate(date: Date) {
   return new Intl.DateTimeFormat(undefined, {
@@ -248,6 +261,33 @@ function getSwapProviderLabel(providerId: Exclude<StarkZapSwapProviderId, 'best'
 
 function getDcaProviderLabel(providerId: StarkZapDcaProviderId) {
   return providerId === 'ekubo' ? 'Ekubo' : 'AVNU';
+}
+
+export function isSupportedDcaPairForProvider(
+  providerId: StarkZapDcaProviderId,
+  sellToken: StarkZapTokenKey,
+  buyToken: StarkZapTokenKey,
+) {
+  return TESTED_SEPOLIA_DCA_PAIRS[providerId]
+    .some(([supportedSellToken, supportedBuyToken]) => (
+      supportedSellToken === sellToken && supportedBuyToken === buyToken
+    ));
+}
+
+export function getUnsupportedDcaPairMessage(
+  providerId: StarkZapDcaProviderId,
+  sellToken: StarkZapTokenKey,
+  buyToken: StarkZapTokenKey,
+) {
+  if (isSupportedDcaPairForProvider(providerId, sellToken, buyToken)) {
+    return null;
+  }
+
+  const supportedPairs = TESTED_SEPOLIA_DCA_PAIRS[providerId]
+    .map(([supportedSellToken, supportedBuyToken]) => `${supportedSellToken} -> ${supportedBuyToken}`)
+    .join(' or ');
+
+  return `${getDcaProviderLabel(providerId)} DCA on Starknet Sepolia is currently reliable only for ${supportedPairs}. Pick one of those pairs or switch provider.`;
 }
 
 function getTrackedProviderLabel(providerId: string) {
@@ -783,11 +823,20 @@ export function useStarkZapActions() {
         throw new Error('Choose two different DCA tokens.');
       }
 
+      const providerId = params.providerId || 'avnu';
+      const unsupportedPairMessage = getUnsupportedDcaPairMessage(
+        providerId,
+        params.sellToken,
+        params.buyToken,
+      );
+      if (unsupportedPairMessage) {
+        throw new Error(unsupportedPairMessage);
+      }
+
       const wallet = getWallet();
       const sellToken = sepoliaTokens[params.sellToken];
       const buyToken = sepoliaTokens[params.buyToken];
       const sellAmountPerCycle = Amount.parse(params.sellAmountPerCycle, sellToken);
-      const providerId = params.providerId || 'avnu';
       const quote = await withTimeout(
         wallet.dca().previewCycle({
           sellToken,
@@ -825,8 +874,17 @@ export function useStarkZapActions() {
       }
 
       const executionMode = normalizeExecutionMode(params.feeMode);
-      const wallet = getWallet(executionMode);
       const providerId = params.providerId || 'avnu';
+      const unsupportedPairMessage = getUnsupportedDcaPairMessage(
+        providerId,
+        params.sellToken,
+        params.buyToken,
+      );
+      if (unsupportedPairMessage) {
+        throw new Error(unsupportedPairMessage);
+      }
+
+      const wallet = getWallet(executionMode);
       const sellToken = sepoliaTokens[params.sellToken];
       const buyToken = sepoliaTokens[params.buyToken];
       const prepared = await withTimeout(

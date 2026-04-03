@@ -12,7 +12,6 @@ import {
   type PreflightResult,
   fromAddress,
 } from '../../node_modules/starkzap/dist/src/types/index.js';
-import { AvnuDcaProvider } from '../../node_modules/starkzap/dist/src/dca/avnu.js';
 import { EkuboDcaProvider } from '../../node_modules/starkzap/dist/src/dca/ekubo.js';
 import { AvnuSwapProvider } from '../../node_modules/starkzap/dist/src/swap/avnu.js';
 import { EkuboSwapProvider } from '../../node_modules/starkzap/dist/src/swap/ekubo.js';
@@ -22,6 +21,7 @@ import {
   preflightTransaction,
 } from '../../node_modules/starkzap/dist/src/wallet/utils.js';
 import { getStakingPreset } from '../../node_modules/starkzap/dist/src/staking/presets.js';
+import { CircleSaveAvnuDcaProvider } from '@/lib/starkzapDcaProviders';
 
 type ConnectedStarkZapWalletOptions = {
   account: AccountInterface;
@@ -65,7 +65,7 @@ export class ConnectedStarkZapWallet extends BaseWallet {
       address: fromAddress(options.address),
       defaultSwapProvider: new AvnuSwapProvider(),
       defaultLendingProvider: new VesuLendingProvider(),
-      defaultDcaProvider: new AvnuDcaProvider(),
+      defaultDcaProvider: new CircleSaveAvnuDcaProvider(),
     });
 
     this.connectedAccount = options.account;
