@@ -74,7 +74,7 @@ export function HomePage() {
 
   const handlePrimaryAction = () => {
     if (isConnected) {
-      navigate('/dashboard');
+      navigate('/circles');
       return;
     }
 
@@ -116,7 +116,7 @@ export function HomePage() {
                   {isDark ? <SunMedium className="h-4.5 w-4.5" /> : <Moon className="h-4.5 w-4.5" />}
                 </button>
                 <Button variant="outline" onClick={handlePrimaryAction} className="h-11 px-4 sm:px-5">
-                  {isConnected ? 'Enter Dashboard' : 'Connect Wallet'}
+                  {isConnected ? 'Open Circles' : 'Connect Wallet'}
                 </Button>
               </div>
             </div>
@@ -330,7 +330,7 @@ export function HomePage() {
                   Workflow
                 </p>
                 <h2 className="font-display text-4xl font-semibold tracking-[-0.05em] text-foreground sm:text-[3rem]">
-                  One connect action, then everything lives inside the dashboard shell.
+                  One connect action, then CircleSave opens into circles first.
                 </h2>
               </div>
               <Button variant="outline" asChild>
@@ -448,9 +448,9 @@ export function HomePage() {
       <ConnectWalletDialog
         open={walletDialogOpen}
         onOpenChange={setWalletDialogOpen}
-        onConnected={() => navigate('/dashboard')}
-        title="Connect to open the dashboard"
-        description="Once connected, CircleSave opens into the new sidebar-based management workspace."
+        onConnected={() => navigate('/circles')}
+        title="Connect to open circles"
+        description="Once connected, CircleSave opens into the circles workspace first, with swap, DCA, lending, and logs in the same shell."
       />
     </>
   );

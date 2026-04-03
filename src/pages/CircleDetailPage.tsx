@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   AlertCircle,
+  Clock3,
   ExternalLink,
   Loader2,
   Send,
@@ -55,6 +56,28 @@ function getStatusClasses(status: string) {
   }
 }
 
+function formatCountdown(durationMs: number) {
+  const totalMinutes = Math.max(Math.ceil(durationMs / 60_000), 1);
+  const days = Math.floor(totalMinutes / (60 * 24));
+  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+  const minutes = totalMinutes % 60;
+  const parts: string[] = [];
+
+  if (days > 0) {
+    parts.push(`${days}d`);
+  }
+
+  if (hours > 0) {
+    parts.push(`${hours}h`);
+  }
+
+  if (minutes > 0 || parts.length === 0) {
+    parts.push(`${minutes}m`);
+  }
+
+  return parts.join(' ');
+}
+
 function SuccessToast({ label, voyagerUrl }: { label: string; voyagerUrl: string }) {
   return (
     <div>
@@ -74,6 +97,7 @@ export function CircleDetailPage() {
     circle,
     members,
     pendingRequests,
+    distributionState,
     hasPendingRequest,
     isLoading,
     error,
@@ -94,6 +118,7 @@ export function CircleDetailPage() {
 
   const [requestDialogOpen, setRequestDialogOpen] = useState(false);
   const [requestMessage, setRequestMessage] = useState('');
+  const [currentTime, setCurrentTime] = useState(() => Date.now());
   const [actingRequestId, setActingRequestId] = useState<string | null>(null);
   const [actingRequestAction, setActingRequestAction] = useState<'approve' | 'reject' | null>(null);
   const schedulePreview = useMemo(
@@ -111,6 +136,22 @@ export function CircleDetailPage() {
     }),
     [circle?.currentMonth, circle?.maxMembers, circle?.status],
   );
+
+  useEffect(() => {
+    setCurrentTime(Date.now());
+
+    if (circle?.status !== 'ACTIVE') {
+      return undefined;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setCurrentTime(Date.now());
+    }, 30_000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [circle?.status, distributionState.contributionWindowEndsAt]);
 
   if (isLoading) {
     return (
@@ -160,13 +201,22 @@ export function CircleDetailPage() {
   const canContribute = isMember && circle.status === 'ACTIVE';
   const canStart = isCreator && readyToStart;
   const canManageRequests = isCreator && isApprovalRequired && circle.status === 'PENDING';
-  const canDistribute = circle.status === 'ACTIVE' && (isCreator || isMember);
+  const canManageDistribution = circle.status === 'ACTIVE' && (isCreator || isMember);
   const canComplete = circle.status === 'ACTIVE' && isCreator;
   const canEmergencyWithdraw = circle.status === 'FAILED' && isMember;
   const creatorWaitingForMembers = isCreator && circle.status === 'PENDING' && !isCircleFull(circle);
   const waitingForCreatorToStart = !isCreator && circle.status === 'PENDING' && isCircleFull(circle);
   const memberPreview = members.slice(0, 6);
   const remainingMembers = Math.max(members.length - memberPreview.length, 0);
+  const roundRecipient = distributionState.currentRecipient ? formatAddress(distributionState.currentRecipient) : 'Syncing';
+  const expectedRoundPot = circle.monthlyAmount * BigInt(circle.currentMembers);
+  const distributionUnlockAt = distributionState.contributionWindowEndsAt;
+  const hasDistributionTiming = distributionUnlockAt !== null;
+  const contributionWindowOpen = distributionUnlockAt !== null && currentTime < distributionUnlockAt;
+  const distributionCountdown = contributionWindowOpen && distributionUnlockAt !== null
+    ? formatCountdown(distributionUnlockAt - currentTime)
+    : null;
+  const canDistribute = canManageDistribution && hasDistributionTiming && !contributionWindowOpen;
 
   const ensureConnected = () => {
     if (!isConnected) {
@@ -271,6 +321,18 @@ export function CircleDetailPage() {
 
   const handleDistribute = async () => {
     if (!ensureConnected()) return;
+
+    if (!hasDistributionTiming) {
+      toast.error('Round timing is still syncing from the contract. Please refresh and try again in a moment.');
+      return;
+    }
+
+    if (distributionState.contributionWindowEndsAt && Date.now() < distributionState.contributionWindowEndsAt) {
+      toast.error(
+        `Distribution opens after ${new Date(distributionState.contributionWindowEndsAt).toLocaleString()}.`,
+      );
+      return;
+    }
 
     const outcome = await distributePot(circle.contractAddress);
     if (!outcome.ok) {
@@ -434,11 +496,11 @@ export function CircleDetailPage() {
           </div>
         </div>
 
-        <div className="mt-4 flex flex-wrap gap-2">
-          <span
-            className="rounded-full bg-white/8 px-4 py-3 text-muted-foreground"
-          >
-            {circle.currentMonth > 0 ? `Round ${circle.currentMonth}` : 'Pending launch'}
+          <div className="mt-4 flex flex-wrap gap-2">
+            <span
+              className="rounded-full bg-white/8 px-4 py-3 text-muted-foreground"
+            >
+              {circle.currentMonth > 0 ? `Round ${circle.currentMonth}` : 'Pending launch'}
           </span>
           {canJoinDirect ? (
             <Button onClick={handleJoin} disabled={joining}>
@@ -464,8 +526,13 @@ export function CircleDetailPage() {
               Start circle
             </Button>
           ) : null}
-          {canDistribute ? (
-            <Button variant="outline" onClick={handleDistribute} disabled={distributing}>
+          {canManageDistribution ? (
+            <Button
+              variant="outline"
+              onClick={handleDistribute}
+              disabled={distributing || !canDistribute}
+              className={!canDistribute ? 'disabled:opacity-75 disabled:text-foreground/80 dark:disabled:text-white/82' : undefined}
+            >
               {distributing ? <Loader2 className="h-4 w-4 animate-spin" /> : <TrendingUp className="h-4 w-4" />}
               Distribute
             </Button>
@@ -476,7 +543,47 @@ export function CircleDetailPage() {
               Emergency exit
             </Button>
           ) : null}
-        </div>
+          </div>
+
+          {circle.status === 'ACTIVE' ? (
+            <div className="mt-4 rounded-[22px] border border-black/10 bg-black/[0.03] p-4 dark:border-white/10 dark:bg-white/5">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    Round recipient
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-foreground">{roundRecipient}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    Current pot
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-foreground">
+                    {formatAmount(distributionState.currentPot)} / {formatAmount(expectedRoundPot)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    Distribution
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-foreground">
+                    {contributionWindowOpen ? 'Locked' : hasDistributionTiming ? 'Ready' : 'Syncing'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-4 flex items-start gap-3 rounded-[18px] border border-black/10 bg-black/[0.04] px-4 py-3 text-sm text-foreground/80 dark:border-white/10 dark:bg-white/[0.08] dark:text-white/82">
+                <Clock3 className="mt-0.5 h-4 w-4 shrink-0 text-[#7CC8FF]" />
+                <p className="leading-6">
+                  {contributionWindowOpen && distributionState.contributionWindowEndsAt
+                    ? `Distribution unlocks in ${distributionCountdown} at ${new Date(distributionState.contributionWindowEndsAt).toLocaleString()}. Missed payments are only reconciled when the distribution transaction runs.`
+                    : hasDistributionTiming
+                      ? 'The 5-day contribution window has closed. You can distribute this round now, and any missed payments will be slashed from collateral during settlement.'
+                      : 'Round timing is still syncing from on-chain events. Refresh in a moment if the unlock time does not appear.'}
+                </p>
+              </div>
+            </div>
+          ) : null}
 
         <div className="mt-4 flex flex-wrap gap-3 text-sm">
           {isMember ? (

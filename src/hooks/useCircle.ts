@@ -1,7 +1,17 @@
 // CircleSave - Circle Hook (Real Contract Integration)
 import { useCallback, useEffect, useState } from 'react';
 import { useAccount } from '@starknet-react/core';
-import { CairoCustomEnum, CallData, Contract, RpcProvider, cairo } from 'starknet';
+import {
+  CairoCustomEnum,
+  CallData,
+  Contract,
+  RpcProvider,
+  cairo,
+  createAbiParser,
+  hash,
+  events as starknetEvents,
+  type Abi,
+} from 'starknet';
 import { CIRCLE_ABI, CIRCLE_FACTORY_ABI } from '@/lib/abis';
 import {
   buildApproveCall,
@@ -33,6 +43,10 @@ const readProviders = Array.from(new Set([RPC_URL, CARTRIDGE_RPC_URL].filter(Boo
   (nodeUrl) => new RpcProvider({ nodeUrl }),
 );
 const CREATOR_MEMBER_JOIN_NOTICE_STORAGE_KEY = 'circlesave.creator-member-joins.v1';
+const CONTRIBUTION_WINDOW_MS = 5 * 24 * 60 * 60 * 1000;
+const DISTRIBUTION_EVENT_LOOKBACK_BLOCKS = 150_000;
+const POT_DISTRIBUTED_SELECTOR = hash.getSelectorFromName('PotDistributed');
+const CIRCLE_STARTED_SELECTOR = hash.getSelectorFromName('CircleStarted');
 
 type CircleActionResult =
   | { ok: true; txHash: string; voyagerUrl: string }
@@ -41,6 +55,51 @@ type CircleActionResult =
 type ContractLike = {
   execute: (calls: unknown[]) => Promise<unknown>;
 };
+
+type RawContractEvent = {
+  block_hash: string;
+  block_number: number;
+  transaction_hash: string;
+  from_address: string;
+  keys: string[];
+  data: string[];
+};
+
+type ParsedContractEvent = Record<string, unknown> & {
+  block_hash?: string;
+  block_number?: number;
+  transaction_hash?: string;
+};
+
+type EventDecoder = {
+  abiEvents: ReturnType<typeof starknetEvents.getAbiEvents>;
+  abiStructs: ReturnType<typeof CallData.getAbiStruct>;
+  abiEnums: ReturnType<typeof CallData.getAbiEnum>;
+  parser: ReturnType<typeof createAbiParser>;
+};
+
+type DecodedEvent = {
+  blockNumber: number | null;
+  fullName: string;
+  payload: Record<string, unknown>;
+  transactionHash: string;
+};
+
+type CircleDistributionState = {
+  currentPot: bigint;
+  currentRecipient: string | null;
+  roundStartedAt: number | null;
+  contributionWindowEndsAt: number | null;
+};
+
+const EMPTY_CIRCLE_DISTRIBUTION_STATE: CircleDistributionState = {
+  currentPot: 0n,
+  currentRecipient: null,
+  roundStartedAt: null,
+  contributionWindowEndsAt: null,
+};
+
+const CIRCLE_EVENT_DECODER = createEventDecoder(CIRCLE_ABI as unknown as Abi);
 
 function newContract(abi: unknown, address: string, providerOrAccount?: unknown) {
   return new Contract({
@@ -128,6 +187,81 @@ function toBooleanValue(value: unknown): boolean {
   return false;
 }
 
+function createEventDecoder(abi: Abi): EventDecoder {
+  return {
+    abiEvents: starknetEvents.getAbiEvents(abi),
+    abiStructs: CallData.getAbiStruct(abi),
+    abiEnums: CallData.getAbiEnum(abi),
+    parser: createAbiParser(abi),
+  };
+}
+
+function unpackParsedEvent(event: ParsedContractEvent): DecodedEvent | null {
+  const decodedEntry = Object.entries(event).find(
+    ([key]) => key !== 'block_hash' && key !== 'block_number' && key !== 'transaction_hash',
+  );
+
+  if (!decodedEntry) {
+    return null;
+  }
+
+  const [fullName, payload] = decodedEntry;
+
+  if (!payload || typeof payload !== 'object') {
+    return null;
+  }
+
+  return {
+    blockNumber: typeof event.block_number === 'number' ? event.block_number : null,
+    fullName,
+    payload: payload as Record<string, unknown>,
+    transactionHash: typeof event.transaction_hash === 'string' ? event.transaction_hash : '',
+  };
+}
+
+function decodeEvents(rawEvents: RawContractEvent[], decoder: EventDecoder) {
+  return (starknetEvents.parseEvents(
+    rawEvents,
+    decoder.abiEvents,
+    decoder.abiStructs,
+    decoder.abiEnums,
+    decoder.parser,
+  ) as ParsedContractEvent[])
+    .map(unpackParsedEvent)
+    .filter((event): event is DecodedEvent => Boolean(event?.transactionHash));
+}
+
+function readTimestampMs(value: unknown) {
+  const timestampSeconds = Number(toBigIntValue(value));
+  return Number.isFinite(timestampSeconds) && timestampSeconds > 0 ? timestampSeconds * 1000 : null;
+}
+
+async function fetchContractEventsByKey(address: string, fromBlock: number, toBlock: number, selector: string) {
+  if (fromBlock > toBlock) {
+    return [] as RawContractEvent[];
+  }
+
+  const collected: RawContractEvent[] = [];
+  let continuationToken: string | undefined;
+
+  do {
+    const response = await rpc.getEvents({
+      address: toHexAddress(address),
+      chunk_size: 100,
+      continuation_token: continuationToken,
+      from_block: { block_number: fromBlock },
+      to_block: { block_number: toBlock },
+      keys: [[selector]],
+    } as never);
+
+    const chunk = response as { continuation_token?: string; events?: RawContractEvent[] };
+    collected.push(...(chunk.events || []));
+    continuationToken = chunk.continuation_token;
+  } while (continuationToken);
+
+  return collected;
+}
+
 function toCairoEnum(index: number, variants: string[]) {
   return new CairoCustomEnum(
     Object.fromEntries(variants.map((variant, variantIndex) => [
@@ -140,6 +274,10 @@ function toCairoEnum(index: number, variants: string[]) {
 function getErrorMessage(error: unknown, fallback: string) {
   if (error instanceof Error && error.message) {
     return error.message;
+  }
+
+  if (typeof error === 'string' && error.trim()) {
+    return error;
   }
 
   return fallback;
@@ -170,6 +308,55 @@ function extractTransactionHash(result: unknown) {
   return null;
 }
 
+function extractReceiptExecutionStatus(receipt: unknown): string | null {
+  if (!receipt || typeof receipt !== 'object') {
+    return null;
+  }
+
+  const response = receipt as Record<string, unknown>;
+
+  if (typeof response.execution_status === 'string') {
+    return response.execution_status;
+  }
+
+  if (response.receipt && typeof response.receipt === 'object') {
+    const nestedReceipt = response.receipt as Record<string, unknown>;
+    if (typeof nestedReceipt.execution_status === 'string') {
+      return nestedReceipt.execution_status;
+    }
+  }
+
+  return null;
+}
+
+function extractReceiptRevertReason(receipt: unknown): string | null {
+  if (!receipt || typeof receipt !== 'object') {
+    return null;
+  }
+
+  const response = receipt as Record<string, unknown>;
+  const directReason = response.revert_reason ?? response.reason;
+
+  if (typeof directReason === 'string' && directReason.trim()) {
+    return directReason.trim();
+  }
+
+  if (response.execution_result && typeof response.execution_result === 'object') {
+    const executionResult = response.execution_result as Record<string, unknown>;
+    const nestedReason = executionResult.revert_reason ?? executionResult.reason;
+
+    if (typeof nestedReason === 'string' && nestedReason.trim()) {
+      return nestedReason.trim();
+    }
+  }
+
+  if (response.receipt && typeof response.receipt === 'object') {
+    return extractReceiptRevertReason(response.receipt);
+  }
+
+  return null;
+}
+
 async function waitForTransactionResult(result: unknown, fallbackMessage: string) {
   const txHash = extractTransactionHash(result);
 
@@ -177,8 +364,20 @@ async function waitForTransactionResult(result: unknown, fallbackMessage: string
     return buildFailure(`${fallbackMessage}: transaction hash missing`);
   }
 
-  await rpc.waitForTransaction(txHash);
-  return buildSuccess(txHash);
+  try {
+    const receipt = await rpc.waitForTransaction(txHash);
+    const reverted = typeof (receipt as { isReverted?: (() => boolean) }).isReverted === 'function'
+      ? Boolean((receipt as { isReverted: () => boolean }).isReverted())
+      : extractReceiptExecutionStatus(receipt) === 'REVERTED';
+
+    if (reverted) {
+      return buildFailure(extractReceiptRevertReason(receipt) || `${fallbackMessage}: transaction reverted`);
+    }
+
+    return buildSuccess(txHash);
+  } catch (error) {
+    return buildFailure(getErrorMessage(error, fallbackMessage));
+  }
 }
 
 async function executeAccountCalls(
@@ -461,6 +660,76 @@ function readSeenMemberJoinNoticeMap() {
   }
 }
 
+async function fetchCircleDistributionState(circle: Circle): Promise<CircleDistributionState> {
+  if (circle.status !== 'ACTIVE') {
+    return EMPTY_CIRCLE_DISTRIBUTION_STATE;
+  }
+
+  let currentPot = 0n;
+  let currentRecipient: string | null = null;
+  let roundStartedAt: number | null = null;
+  let canAssumeDistributionReady = false;
+
+  try {
+    const circleContract = newContract(CIRCLE_ABI, circle.contractAddress);
+    const [potResponse, rotationQueueResponse] = await Promise.all([
+      circleContract.get_current_pot(),
+      circleContract.get_rotation_queue(),
+    ]);
+
+    currentPot = toBigIntValue(potResponse);
+
+    if (Array.isArray(rotationQueueResponse) && circle.currentMonth > 0) {
+      currentRecipient = rotationQueueResponse[circle.currentMonth - 1]
+        ? toHexAddress(rotationQueueResponse[circle.currentMonth - 1])
+        : null;
+    }
+  } catch (error) {
+    console.warn('Unable to read circle distribution state:', error);
+  }
+
+  try {
+    const latestBlock = await rpc.getBlock('latest');
+    const fromBlock = Math.max(latestBlock.block_number - DISTRIBUTION_EVENT_LOOKBACK_BLOCKS, 0);
+
+    if (circle.currentMonth <= 1) {
+      const startEvents = decodeEvents(
+        await fetchContractEventsByKey(circle.contractAddress, fromBlock, latestBlock.block_number, CIRCLE_STARTED_SELECTOR),
+        CIRCLE_EVENT_DECODER,
+      );
+      const lastStartEvent = [...startEvents].reverse()[0];
+
+      roundStartedAt = lastStartEvent ? readTimestampMs(lastStartEvent.payload.timestamp) : null;
+      canAssumeDistributionReady = !lastStartEvent && fromBlock > 0;
+    } else {
+      const previousMonth = circle.currentMonth - 1;
+      const distributionEvents = decodeEvents(
+        await fetchContractEventsByKey(circle.contractAddress, fromBlock, latestBlock.block_number, POT_DISTRIBUTED_SELECTOR),
+        CIRCLE_EVENT_DECODER,
+      );
+      const lastDistributionEvent = [...distributionEvents]
+        .reverse()
+        .find((event) => Number(toBigIntValue(event.payload.month)) === previousMonth);
+
+      roundStartedAt = lastDistributionEvent ? readTimestampMs(lastDistributionEvent.payload.timestamp) : null;
+      canAssumeDistributionReady = !lastDistributionEvent && fromBlock > 0;
+    }
+  } catch (error) {
+    console.warn('Unable to read circle distribution timing:', error);
+  }
+
+  return {
+    currentPot,
+    currentRecipient,
+    roundStartedAt,
+    contributionWindowEndsAt: roundStartedAt
+      ? roundStartedAt + CONTRIBUTION_WINDOW_MS
+      : canAssumeDistributionReady
+        ? 0
+        : null,
+  };
+}
+
 function readSeenMemberJoinNoticeIds(address: string) {
   const normalizedAddress = normalizeAddress(address);
   return new Set(readSeenMemberJoinNoticeMap()[normalizedAddress] ?? []);
@@ -577,6 +846,7 @@ export function useCircleDetail(circleId: string) {
   const [circle, setCircle] = useState<Circle | null>(null);
   const [members, setMembers] = useState<CircleMember[]>([]);
   const [pendingRequests, setPendingRequests] = useState<CircleJoinRequest[]>([]);
+  const [distributionState, setDistributionState] = useState<CircleDistributionState>(EMPTY_CIRCLE_DISTRIBUTION_STATE);
   const [hasPendingRequest, setHasPendingRequest] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -588,6 +858,7 @@ export function useCircleDetail(circleId: string) {
       setCircle(null);
       setMembers([]);
       setPendingRequests([]);
+      setDistributionState(EMPTY_CIRCLE_DISTRIBUTION_STATE);
       setHasPendingRequest(false);
       setIsLoading(false);
       return;
@@ -611,11 +882,16 @@ export function useCircleDetail(circleId: string) {
       });
       const parsedCircle = parseRawCircleInfo(infoResponse);
       setCircle(parsedCircle);
+      setDistributionState(EMPTY_CIRCLE_DISTRIBUTION_STATE);
+      const [membersResult, pendingRequestsResult] = await Promise.allSettled([
+        fetchMembersForCircle(parsedCircle),
+        fetchPendingRequestsForCircle(parsedCircle),
+      ]);
 
-      const parsedMembers = await fetchMembersForCircle(parsedCircle);
+      const parsedMembers = membersResult.status === 'fulfilled' ? membersResult.value : [];
+      const nextPendingRequests = pendingRequestsResult.status === 'fulfilled' ? pendingRequestsResult.value : [];
+
       setMembers(parsedMembers);
-
-      const nextPendingRequests = await fetchPendingRequestsForCircle(parsedCircle);
       setPendingRequests(nextPendingRequests);
 
       if (address) {
@@ -635,6 +911,7 @@ export function useCircleDetail(circleId: string) {
       console.error('Error fetching circle detail:', error);
       setError(getErrorMessage(error, 'Failed to fetch circle details'));
       setPendingRequests([]);
+      setDistributionState(EMPTY_CIRCLE_DISTRIBUTION_STATE);
       setHasPendingRequest(false);
     } finally {
       setIsLoading(false);
@@ -645,10 +922,37 @@ export function useCircleDetail(circleId: string) {
     void fetchDetail();
   }, [fetchDetail]);
 
+  useEffect(() => {
+    if (!circle || circle.status !== 'ACTIVE') {
+      setDistributionState(EMPTY_CIRCLE_DISTRIBUTION_STATE);
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    void fetchCircleDistributionState(circle)
+      .then((nextState) => {
+        if (!cancelled) {
+          setDistributionState(nextState);
+        }
+      })
+      .catch((distributionError) => {
+        console.warn('Unable to sync distribution state:', distributionError);
+        if (!cancelled) {
+          setDistributionState(EMPTY_CIRCLE_DISTRIBUTION_STATE);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [circle?.contractAddress, circle?.currentMembers, circle?.currentMonth, circle?.status]);
+
   return {
     circle,
     members,
     pendingRequests,
+    distributionState,
     hasPendingRequest,
     isLoading,
     error,
