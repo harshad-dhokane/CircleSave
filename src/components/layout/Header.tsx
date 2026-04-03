@@ -30,7 +30,7 @@ const navItems = [
   { href: '/circles', label: 'Discover', icon: Users },
   { href: '/logs', label: 'Logs', icon: FileText },
   { href: '/dashboard', label: 'Dashboard', icon: TrendingUp },
-  { href: '/sdk', label: 'Help', icon: BookOpen },
+  { href: '/help', label: 'Help', icon: BookOpen },
 ];
 
 const sdkItems = [

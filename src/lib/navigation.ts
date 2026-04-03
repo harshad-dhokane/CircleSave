@@ -2,6 +2,7 @@ import type { LucideIcon } from 'lucide-react';
 import {
   ArrowRightLeft,
   Blocks,
+  BookOpen,
   FileText,
   LayoutDashboard,
   PiggyBank,
@@ -91,6 +92,13 @@ export const appNavigationSections: AppNavigationSection[] = [
         icon: UserRound,
         accent: '#7CC8FF',
       },
+      {
+        to: '/help',
+        label: 'Help',
+        description: 'Open the full application guide and feature walkthrough.',
+        icon: BookOpen,
+        accent: '#FFE66D',
+      },
     ],
   },
 ];
@@ -107,7 +115,7 @@ export const footerLinkGroups = {
     { label: 'Logs', to: '/logs' },
   ],
   resources: [
-    { label: 'Help Center', to: '/sdk' },
+    { label: 'Help Center', to: '/help' },
     { label: 'Leaderboard', to: '/leaderboard' },
     { label: 'Contracts', to: '/contracts' },
   ],
@@ -175,7 +183,7 @@ const pageMeta: PageMeta[] = [
     badge: 'Review',
   },
   {
-    matches: (pathname) => pathname === '/sdk',
+    matches: (pathname) => pathname === '/help' || pathname === '/sdk',
     title: 'Help Center',
     badge: 'Support',
   },

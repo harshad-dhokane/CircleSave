@@ -146,7 +146,7 @@ export function ContractsPage() {
         description="CircleSave runs on Starknet Sepolia with a deployed circle factory, collateral manager, and reputation system. These are the current live addresses used by the app."
         accentClassName="bg-[#FF6B6B] text-white"
         actions={
-          <Link to="/sdk">
+          <Link to="/help">
             <Button className="neo-button-primary">
               Open Help Center
               <ArrowRight className="ml-2 h-5 w-5" />
@@ -250,7 +250,7 @@ export function ApiPage() {
             Useful Product Routes
           </div>
           <div className="grid gap-3 text-sm font-black uppercase tracking-[0.08em]">
-            <Link to="/sdk" className="border-[2px] border-black bg-[#FEFAE0] px-4 py-3 hover:bg-[#FFE66D]">Help Center</Link>
+            <Link to="/help" className="border-[2px] border-black bg-[#FEFAE0] px-4 py-3 hover:bg-[#FFE66D]">Help Center</Link>
             <Link to="/circles" className="border-[2px] border-black bg-[#FEFAE0] px-4 py-3 hover:bg-[#FFE66D]">Discover Circles</Link>
             <Link to="/swap" className="border-[2px] border-black bg-[#FEFAE0] px-4 py-3 hover:bg-[#FFE66D]">Swap</Link>
             <Link to="/dca" className="border-[2px] border-black bg-[#FEFAE0] px-4 py-3 hover:bg-[#FFE66D]">DCA</Link>

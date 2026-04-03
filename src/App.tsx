@@ -57,8 +57,8 @@ function App() {
             <Route path="/circles" element={<CirclesPage />} />
             <Route path="/circles/create" element={<CreateCirclePage />} />
             <Route path="/circles/:id" element={<CircleDetailPage />} />
-            <Route path="/sdk" element={<SdkPage />} />
-            <Route path="/help" element={<Navigate to="/sdk" replace />} />
+            <Route path="/help" element={<SdkPage />} />
+            <Route path="/sdk" element={<Navigate to="/help" replace />} />
             <Route path="/swap" element={<SwapPage />} />
             <Route path="/batching" element={<BatchingPage />} />
             <Route path="/dca" element={<DcaPage />} />

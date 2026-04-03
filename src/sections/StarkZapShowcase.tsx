@@ -94,7 +94,7 @@ export function StarkZapShowcase() {
             </div>
 
             <div className="mt-8 flex flex-wrap gap-4">
-              <Link to="/sdk">
+              <Link to="/help">
                 <Button className="neo-button-primary">
                   Open Help Center
                   <ArrowRight className="ml-2 h-5 w-5" />

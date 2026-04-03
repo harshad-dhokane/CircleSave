@@ -84,7 +84,6 @@ export function LogsPage() {
     isLoading,
     lastUpdatedAt,
     refresh,
-    refreshIntervalMs,
   } = useOnchainActivityFeed();
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all');
   const [selectedEntry, setSelectedEntry] = useState<LogsFeedEntry | null>(null);
@@ -106,8 +105,6 @@ export function LogsPage() {
   const visibleEntries = filteredEntries.slice(0, 12);
   const selectedMeta = selectedEntry ? CATEGORY_META[selectedEntry.category] : null;
   const SelectedIcon = selectedMeta?.icon;
-  const refreshIntervalSeconds = Math.round(refreshIntervalMs / 1000);
-
   const stats = useMemo(() => ({
     total: feedEntries.length,
     circles: feedEntries.filter((entry) => entry.category === 'circle').length,
@@ -157,9 +154,6 @@ export function LogsPage() {
             <p className="mt-2 text-sm text-muted-foreground">
               Shared contract activity fetched live from CircleSave contracts, so every user sees the same feed.
             </p>
-            <div className="mt-3 rounded-[20px] border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm leading-6 text-amber-900 dark:text-amber-100">
-              Shared records usually appear within about {refreshIntervalSeconds} seconds after confirmation. Swap, lend, batch, and DCA actions are external StarkZap transactions, so they are not part of this shared CircleSave contract feed yet.
-            </div>
           </div>
 
           <div className="flex flex-wrap gap-2">
