@@ -5,14 +5,14 @@ import { CONTRACTS } from '@/lib/constants';
 const RPC_URL = import.meta.env.VITE_STARKNET_RPC_URL || 'https://starknet-sepolia-rpc.publicnode.com';
 const populateProvider = new RpcProvider({ nodeUrl: RPC_URL });
 
-function populateContractCall(abi: any, address: string, method: string, args?: any[]) {
+function populateContractCall(abi: unknown, address: string, method: string, args: unknown[] = []) {
   const contract = new Contract({
-    abi,
+    abi: abi as never,
     address,
-    providerOrAccount: populateProvider,
+    providerOrAccount: populateProvider as never,
   });
 
-  return contract.populate(method, (args || []) as any);
+  return contract.populate(method, args as never);
 }
 
 function toCairoEnum(index: number, variants: string[]) {
@@ -37,12 +37,38 @@ export function buildJoinCircleCall(circleAddress: string) {
   return populateContractCall(CIRCLE_ABI, circleAddress, 'join');
 }
 
+export function buildRequestJoinCircleCall(circleAddress: string, message: string) {
+  const messageAsFelt = CallData.compile([message])[0];
+
+  return populateContractCall(CIRCLE_ABI, circleAddress, 'request_join', [messageAsFelt]);
+}
+
+export function buildApproveMemberCall(circleAddress: string, applicant: string) {
+  return populateContractCall(CIRCLE_ABI, circleAddress, 'approve_member', [applicant]);
+}
+
+export function buildRejectMemberCall(circleAddress: string, applicant: string) {
+  return populateContractCall(CIRCLE_ABI, circleAddress, 'reject_member', [applicant]);
+}
+
 export function buildContributeCall(circleAddress: string) {
   return populateContractCall(CIRCLE_ABI, circleAddress, 'contribute');
 }
 
+export function buildDistributePotCall(circleAddress: string) {
+  return populateContractCall(CIRCLE_ABI, circleAddress, 'distribute_pot');
+}
+
 export function buildStartCircleCall(circleAddress: string) {
   return populateContractCall(CIRCLE_ABI, circleAddress, 'start_circle');
+}
+
+export function buildCompleteCircleCall(circleAddress: string) {
+  return populateContractCall(CIRCLE_ABI, circleAddress, 'complete_circle');
+}
+
+export function buildEmergencyWithdrawCall(circleAddress: string) {
+  return populateContractCall(CIRCLE_ABI, circleAddress, 'emergency_withdraw');
 }
 
 export function buildCreateCircleCall(params: {

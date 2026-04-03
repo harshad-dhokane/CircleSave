@@ -12,23 +12,23 @@ const Toaster = ({ ...props }: ToasterProps) => {
   const { theme = "system" } = useTheme()
   const toastClassNames = {
     toast:
-      "!rounded-none !border-[2px] !border-black !bg-[#FEFAE0] !text-black !shadow-[4px_4px_0px_0px_#1a1a1a] dark:!border-[#3f4c76] dark:!bg-[#1d2440] dark:!text-[#f8fafc] dark:!shadow-[4px_4px_0px_0px_#070b17]",
-    title: "!text-[14px] !font-black !tracking-[0.01em]",
+      "!rounded-[24px] !border !border-black/10 !bg-white/92 !text-black !shadow-[0_24px_60px_-34px_rgba(15,23,42,0.42)] !backdrop-blur-2xl dark:!border-white/10 dark:!bg-[#0d111a]/92 dark:!text-[#f8fafc] dark:!shadow-[0_28px_70px_-36px_rgba(0,0,0,0.92)]",
+    title: "!font-display !text-[14px] !font-semibold !tracking-[-0.02em]",
     description: "!mt-1 !text-[13px] !leading-relaxed !text-black/70 dark:!text-[#bfcae0]",
     content: "!gap-1.5",
     icon: "!text-current",
     closeButton:
-      "!border-[2px] !border-black !rounded-none !bg-white !text-black !shadow-[2px_2px_0px_0px_#1a1a1a] hover:!-translate-x-px hover:!-translate-y-px hover:!shadow-[3px_3px_0px_0px_#1a1a1a] dark:!border-[#3f4c76] dark:!bg-[#243052] dark:!text-[#f8fafc] dark:!shadow-[2px_2px_0px_0px_#070b17] dark:hover:!shadow-[3px_3px_0px_0px_#070b17]",
+      "!rounded-2xl !border !border-black/10 !bg-white/82 !text-black !shadow-[0_16px_36px_-24px_rgba(15,23,42,0.34)] hover:!bg-white dark:!border-white/10 dark:!bg-white/8 dark:!text-[#f8fafc] dark:!shadow-[0_20px_42px_-26px_rgba(0,0,0,0.86)] dark:hover:!bg-white/12",
     actionButton:
-      "!rounded-none !border-[2px] !border-black !bg-[#4ECDC4] !text-black !font-black !shadow-[2px_2px_0px_0px_#1a1a1a] hover:!-translate-x-px hover:!-translate-y-px hover:!shadow-[3px_3px_0px_0px_#1a1a1a] dark:!border-[#3f4c76] dark:!bg-[#4ECDC4] dark:!text-[#09101f] dark:!shadow-[2px_2px_0px_0px_#070b17] dark:hover:!shadow-[3px_3px_0px_0px_#070b17]",
+      "!rounded-2xl !border !border-black/10 !bg-foreground !text-white !font-semibold !shadow-[0_18px_42px_-24px_rgba(15,23,42,0.54)] dark:!border-white/10 dark:!bg-white dark:!text-[#09101f] dark:!shadow-[0_20px_46px_-26px_rgba(0,0,0,0.9)]",
     cancelButton:
-      "!rounded-none !border-[2px] !border-black !bg-white !text-black !font-black !shadow-[2px_2px_0px_0px_#1a1a1a] hover:!-translate-x-px hover:!-translate-y-px hover:!shadow-[3px_3px_0px_0px_#1a1a1a] dark:!border-[#3f4c76] dark:!bg-[#243052] dark:!text-[#f8fafc] dark:!shadow-[2px_2px_0px_0px_#070b17] dark:hover:!shadow-[3px_3px_0px_0px_#070b17]",
-    success: "!bg-[#96CEB4] !text-[#09101f] !border-[#4d7e6a]",
-    warning: "!bg-[#FFE66D] !text-[#332300] !border-[#b79c24]",
-    error: "!bg-[#ffd7d7] !text-[#5d1717] !border-[#c76666] dark:!bg-[#5c2430] dark:!text-[#ffe9e9] dark:!border-[#b26d7a]",
-    info: "!bg-[#d9f0ff] !text-[#12324f] !border-[#6d9cc0] dark:!bg-[#223c58] dark:!text-[#e6f4ff] dark:!border-[#688bb0]",
-    loading: "!bg-[#e7eefc] !text-[#17263f] !border-[#7a8db0] dark:!bg-[#25324d] dark:!text-[#eef4ff] dark:!border-[#6c81a7]",
-    default: "!bg-[#FEFAE0] !text-black !border-black dark:!bg-[#1d2440] dark:!text-[#f8fafc] dark:!border-[#3f4c76]",
+      "!rounded-2xl !border !border-black/10 !bg-white/82 !text-black !font-semibold !shadow-[0_16px_36px_-24px_rgba(15,23,42,0.34)] dark:!border-white/10 dark:!bg-white/8 dark:!text-[#f8fafc] dark:!shadow-[0_20px_42px_-26px_rgba(0,0,0,0.86)]",
+    success: "!bg-[#b9f480]/96 !text-[#101809] !border-[#9ad65a]",
+    warning: "!bg-[#ffd789]/96 !text-[#30210a] !border-[#d7ad52]",
+    error: "!bg-[#ffd6d3]/96 !text-[#5d1717] !border-[#ec9f98] dark:!bg-[#4b2028]/96 dark:!text-[#ffe9e9] dark:!border-[#87505d]",
+    info: "!bg-[#d7ecff]/96 !text-[#102c46] !border-[#9bc7e9] dark:!bg-[#1e3043]/96 dark:!text-[#e6f4ff] dark:!border-[#4b6f93]",
+    loading: "!bg-[#e7eefc]/96 !text-[#17263f] !border-[#b8c7e1] dark:!bg-[#25324d]/96 dark:!text-[#eef4ff] dark:!border-[#51688a]",
+    default: "!bg-white/92 !text-black !border-black/10 dark:!bg-[#0d111a]/92 dark:!text-[#f8fafc] dark:!border-white/10",
   } as const
 
   return (

@@ -1,8 +1,11 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useWallet } from '@/hooks/useWallet';
+import { useApproveMember, useIncomingCircleRequests, useRejectMember } from '@/hooks/useCircle';
+import { CircleMemberJoinPanel } from '@/components/circles/CircleMemberJoinPanel';
+import { CircleRequestsPanel } from '@/components/circles/CircleRequestsPanel';
 import { Button } from '@/components/ui/button';
-import { Wallet, Menu, X, Users, TrendingUp, ArrowRightLeft, Repeat, PiggyBank, BookOpen, Moon, Sun, AlertTriangle, FileText, ChevronDown, Blocks } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Wallet, Menu, X, Users, TrendingUp, ArrowRightLeft, Repeat, PiggyBank, BookOpen, Moon, Sun, AlertTriangle, FileText, ChevronDown, Blocks, BellRing, CheckCircle } from 'lucide-react';
+import { useState } from 'react';
 import { formatAddress } from '@/lib/constants';
 import { useTheme } from 'next-themes';
 import {
@@ -20,6 +23,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { toast } from 'sonner';
 
 const navItems = [
   { href: '/', label: 'Home', icon: null },
@@ -59,12 +63,27 @@ export function Header() {
     balanceLoading,
     walletNotice,
   } = useWallet();
+  const {
+    requests,
+    memberJoinNotices,
+    pendingCount: pendingRequestCount,
+    memberJoinCount,
+    readyToStartCircles,
+    readyToStartCount,
+    notificationCount,
+    isLoading: requestsLoading,
+    markMemberJoinNoticesSeen,
+    refetch: refetchRequests,
+  } = useIncomingCircleRequests({ pollMs: 30000 });
+  const { approveMember, isSubmitting: approvingRequest } = useApproveMember();
+  const { rejectMember, isSubmitting: rejectingRequest } = useRejectMember();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [walletDialogOpen, setWalletDialogOpen] = useState(false);
-  const [mounted, setMounted] = useState(false);
+  const [actingRequestId, setActingRequestId] = useState<string | null>(null);
+  const [actingRequestAction, setActingRequestAction] = useState<'approve' | 'reject' | null>(null);
   const { resolvedTheme, setTheme } = useTheme();
   const location = useLocation();
-  const isDark = mounted ? resolvedTheme === 'dark' : true;
+  const isDark = resolvedTheme !== 'light';
   const balanceLabel = balanceLoading
     ? '...'
     : balance
@@ -73,12 +92,46 @@ export function Header() {
         ? 'Syncing...'
         : '0.00 STRK';
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
   const toggleTheme = () => {
     setTheme(isDark ? 'light' : 'dark');
+  };
+
+  const handleApproveRequest = async (request: (typeof requests)[number]) => {
+    setActingRequestId(request.id);
+    setActingRequestAction('approve');
+    try {
+      const outcome = await approveMember(request.circleAddress, request.applicantAddress);
+
+      if (!outcome.ok) {
+        toast.error(outcome.error);
+        return;
+      }
+
+      toast.success('Join request approved');
+      await refetchRequests();
+    } finally {
+      setActingRequestId(null);
+      setActingRequestAction(null);
+    }
+  };
+
+  const handleRejectRequest = async (request: (typeof requests)[number]) => {
+    setActingRequestId(request.id);
+    setActingRequestAction('reject');
+    try {
+      const outcome = await rejectMember(request.circleAddress, request.applicantAddress);
+
+      if (!outcome.ok) {
+        toast.error(outcome.error);
+        return;
+      }
+
+      toast.success('Join request rejected');
+      await refetchRequests();
+    } finally {
+      setActingRequestId(null);
+      setActingRequestAction(null);
+    }
   };
 
   const leadingNavItems = navItems.slice(0, 2);
@@ -199,6 +252,135 @@ export function Header() {
                   <Users className="w-4 h-4" />
                   <span className="font-bold text-[14px] whitespace-nowrap">{formatAddress(address!)}</span>
                 </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className="relative flex h-11 w-11 shrink-0 items-center justify-center border-[2px] border-black bg-white shadow-[1px_1px_0px_0px_#1a1a1a] transition-all hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-[3px_3px_0px_0px_#1a1a1a]"
+                      aria-label="Open creator notifications"
+                    >
+                      <BellRing className="h-4 w-4" />
+                      {notificationCount > 0 && (
+                        <span className="absolute -right-1.5 -top-1.5 inline-flex min-h-6 min-w-6 items-center justify-center rounded-full border-[2px] border-black bg-[#FF6B6B] px-1 text-[11px] font-black text-white">
+                          {notificationCount > 9 ? '9+' : notificationCount}
+                        </span>
+                      )}
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="end"
+                    className="w-[min(92vw,26rem)] rounded-[26px] border border-black/10 bg-white/92 p-3 text-foreground shadow-[0_26px_72px_-40px_rgba(15,23,42,0.6)] backdrop-blur-2xl dark:border-white/10 dark:bg-[#0d111a]/92 dark:shadow-[0_34px_82px_-42px_rgba(0,0,0,0.9)]"
+                  >
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-[0.08em] text-muted-foreground">Creator Inbox</p>
+                        <h3 className="text-lg font-black text-foreground">Notifications</h3>
+                      </div>
+                      <Link
+                        to="/dashboard?tab=requests"
+                        className="text-xs font-black uppercase tracking-[0.08em] underline underline-offset-4"
+                      >
+                        Open Dashboard
+                      </Link>
+                    </div>
+
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-[0.08em] text-muted-foreground">Member Joins</p>
+                        <h4 className="text-base font-black text-foreground">Open Circles</h4>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {memberJoinCount > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => markMemberJoinNoticesSeen()}
+                            className="text-[11px] font-black uppercase tracking-[0.08em] underline underline-offset-4"
+                          >
+                            Mark Seen
+                          </button>
+                        )}
+                        <span className="rounded-full border border-black/10 bg-black/[0.03] px-2.5 py-1 text-xs font-black uppercase tracking-[0.08em] dark:border-white/10 dark:bg-white/5">
+                          {memberJoinCount}
+                        </span>
+                      </div>
+                    </div>
+
+                    <CircleMemberJoinPanel
+                      notices={memberJoinNotices.slice(0, 3)}
+                      isLoading={requestsLoading}
+                      compact
+                      className="mb-4 max-h-[22rem] overflow-y-auto pr-1"
+                      emptyDescription="New members joining your open circles will show up here."
+                    />
+
+                    {readyToStartCircles.length > 0 && (
+                      <div className="mb-4 rounded-[22px] border border-[#B5F36B]/24 bg-[#B5F36B]/14 p-3 dark:border-[#B5F36B]/18 dark:bg-[#B5F36B]/10">
+                        <div className="mb-3 flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle className="h-4 w-4" />
+                            <div>
+                              <p className="text-xs font-black uppercase tracking-[0.08em] text-muted-foreground">Ready To Start</p>
+                              <h4 className="text-base font-black text-foreground">Filled Circles</h4>
+                            </div>
+                          </div>
+                          <span className="rounded-full border border-black/10 bg-white/72 px-2.5 py-1 text-xs font-black uppercase tracking-[0.08em] dark:border-white/10 dark:bg-white/8">
+                            {readyToStartCount}
+                          </span>
+                        </div>
+
+                        <div className="space-y-2">
+                          {readyToStartCircles.slice(0, 3).map((circle) => (
+                            <Link
+                              key={circle.id}
+                              to={`/circles/${circle.circleId}`}
+                              className="flex items-center justify-between gap-3 rounded-[20px] border border-black/10 bg-black/[0.03] px-3 py-3 transition duration-200 hover:-translate-y-0.5 hover:bg-black/[0.045] dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/8"
+                            >
+                              <div className="min-w-0">
+                                <p className="truncate font-black text-foreground">{circle.circleName}</p>
+                                <p className="text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground">
+                                  {circle.currentMembers}/{circle.maxMembers} members filled
+                                </p>
+                              </div>
+                              <span className="shrink-0 text-xs font-black uppercase tracking-[0.08em] underline underline-offset-4">
+                                Open
+                              </span>
+                            </Link>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-[0.08em] text-muted-foreground">Join Requests</p>
+                        <h4 className="text-base font-black text-foreground">Approval Queue</h4>
+                      </div>
+                      <span className="rounded-full border border-black/10 bg-black/[0.03] px-2.5 py-1 text-xs font-black uppercase tracking-[0.08em] dark:border-white/10 dark:bg-white/5">
+                        {pendingRequestCount}
+                      </span>
+                    </div>
+
+                    <CircleRequestsPanel
+                      requests={requests.slice(0, 4)}
+                      isLoading={requestsLoading}
+                      actingRequestId={actingRequestId}
+                      actingRequestAction={actingRequestAction}
+                      onApprove={handleApproveRequest}
+                      onReject={handleRejectRequest}
+                      compact
+                      className="max-h-[26rem] overflow-y-auto pr-1"
+                      emptyDescription={readyToStartCount > 0
+                        ? 'Filled circles are ready to start above. New applicants for approval-required circles will appear here.'
+                        : 'Approval-required circles you create will surface new applicants here.'}
+                    />
+
+                    {(approvingRequest || rejectingRequest) && (
+                      <p className="mt-3 text-xs font-black uppercase tracking-[0.08em] text-muted-foreground">
+                        Updating request status...
+                      </p>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
                 <Button
                   onClick={disconnectWallet}
                   variant="outline"
@@ -224,14 +406,18 @@ export function Header() {
                   </span>
                 </Button>
                 <Dialog open={walletDialogOpen} onOpenChange={setWalletDialogOpen}>
-                  <DialogContent className="border-[2px] border-black bg-[#FEFAE0] shadow-[4px_4px_0px_0px_#1a1a1a]">
-                    <DialogHeader>
-                      <DialogTitle className="text-2xl font-black">Connect Wallet</DialogTitle>
-                      <DialogDescription className="text-black/70 text-base">
-                        Use Cartridge social login to explore circles, swap, automate DCA, and fund positions without wallet-mode glitches.
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className="grid gap-3">
+                  <DialogContent className="overflow-hidden rounded-[28px] border border-black/10 bg-white/92 p-0 shadow-[0_32px_80px_-38px_rgba(15,23,42,0.48)] backdrop-blur-2xl dark:border-white/10 dark:bg-[#0b0f15] dark:shadow-[0_34px_90px_-40px_rgba(0,0,0,0.92)] sm:max-w-[560px]">
+                    <div className="border-b border-black/8 px-6 py-5 dark:border-white/10">
+                      <DialogHeader>
+                        <DialogTitle className="font-display text-2xl font-semibold tracking-[-0.04em] text-foreground">
+                          Connect wallet
+                        </DialogTitle>
+                        <DialogDescription className="text-sm leading-6 text-muted-foreground">
+                          Use Cartridge social login to explore circles, swap, automate DCA, and fund positions without wallet-mode glitches.
+                        </DialogDescription>
+                      </DialogHeader>
+                    </div>
+                    <div className="grid gap-3 px-6 py-6">
                       {walletOptions.map((option) => (
                         <Button
                           key={option.id}
@@ -241,10 +427,10 @@ export function Header() {
                           }}
                           disabled={isConnecting || !option.installed}
                           variant="outline"
-                          className="justify-between border-[2px] border-black bg-white px-5 py-6 text-left font-bold text-[15px] shadow-[2px_2px_0px_0px_#1a1a1a] hover:shadow-[4px_4px_0px_0px_#1a1a1a] disabled:opacity-50"
+                          className="justify-between rounded-[22px] border border-black/10 bg-black/[0.03] px-5 py-6 text-left text-[15px] font-semibold text-foreground shadow-none hover:bg-black/[0.05] dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/8 disabled:opacity-50"
                         >
                           <span>{option.name}</span>
-                          <span className="text-xs uppercase tracking-wide text-black/60">
+                          <span className="text-xs uppercase tracking-wide text-muted-foreground">
                             {option.id === 'controller' ? 'Social Login' : option.installed ? 'Installed' : 'Not Installed'}
                           </span>
                         </Button>
@@ -324,6 +510,24 @@ export function Header() {
                   {item.label}
                 </Link>
               ))}
+
+              {isConnected && (
+                <Link
+                  to="/dashboard?tab=requests"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex items-center justify-between gap-3 px-4 py-3 font-bold text-[15px] border-[2px] border-black bg-white shadow-[1px_1px_0px_0px_#1a1a1a]"
+                >
+                  <span className="flex items-center gap-3">
+                    <BellRing className="h-4 w-4" />
+                    Creator Inbox
+                  </span>
+                  {notificationCount > 0 && (
+                    <span className="inline-flex min-h-6 min-w-6 items-center justify-center rounded-full border-[2px] border-black bg-[#FF6B6B] px-1 text-[11px] font-black text-white">
+                      {notificationCount > 9 ? '9+' : notificationCount}
+                    </span>
+                  )}
+                </Link>
+              )}
 
               <button
                 type="button"

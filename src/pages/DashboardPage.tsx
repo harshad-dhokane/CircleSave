@@ -1,357 +1,648 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { useWallet } from '@/hooks/useWallet';
-import { useUserCircles } from '@/hooks/useCircle';
-import { useStarkZapLogs } from '@/hooks/useStarkZapLogs';
-import { CircleCard } from '@/components/circles/CircleCard';
-import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   ArrowRightLeft,
   Blocks,
-  CheckCircle,
-  Clock,
-  ExternalLink,
   FileText,
   PiggyBank,
   Plus,
   Repeat,
-  TrendingUp,
-  User,
   Users,
   Wallet,
 } from 'lucide-react';
-import { CONTRACTS, formatAddress, formatAmountShort, getVoyagerContractUrl } from '@/lib/constants';
+import { Area, AreaChart, Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts';
+import { Button } from '@/components/ui/button';
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+} from '@/components/ui/chart';
+import { useIncomingCircleRequests, useUserCircles } from '@/hooks/useCircle';
+import { useReputation } from '@/hooks/useReputation';
+import { useStarkZapLogs } from '@/hooks/useStarkZapLogs';
+import { useWallet } from '@/hooks/useWallet';
+import { isCircleReadyToStart } from '@/lib/circleState';
+import { formatAddress, formatAmountShort } from '@/lib/constants';
+import { getCirclePath } from '@/lib/routes';
+import { getStarkZapLogAmountText } from '@/lib/starkzapLogs';
 
-const LOG_KIND_META = {
-  batch: { label: 'Batch', color: '#F4A261', icon: Blocks },
-  swap: { label: 'Swap', color: '#4ECDC4', icon: ArrowRightLeft },
-  dca: { label: 'DCA', color: '#FFE66D', icon: Repeat },
-  lending: { label: 'Lending', color: '#96CEB4', icon: PiggyBank },
-  staking: { label: 'Staking', color: '#45B7D1', icon: TrendingUp },
-} as const;
-
-const quickActions = [
-  { to: '/circles', icon: Users, color: '#FF6B6B', title: 'Discover Circles', desc: 'Find new groups and open spots.' },
-  { to: '/circles/create', icon: Plus, color: '#4ECDC4', title: 'Create Circle', desc: 'Launch a new community savings plan.' },
-  { to: '/swap', icon: ArrowRightLeft, color: '#DDA0DD', title: 'Swap', desc: 'Route into STRK from your connected wallet.' },
-  { to: '/batching', icon: Blocks, color: '#F4A261', title: 'Batching', desc: 'Sign multiple transfers in one TxBuilder flow.' },
-  { to: '/dca', icon: Repeat, color: '#FFE66D', title: 'DCA', desc: 'Automate recurring buys with one wallet.' },
-  { to: '/lending', icon: PiggyBank, color: '#96CEB4', title: 'Lending', desc: 'Put idle assets to work on Vesu.' },
-  { to: '/logs', icon: FileText, color: '#F4A261', title: 'Logs', desc: 'Check submitted wallet activity and status.' },
+const MODULE_META = [
+  { key: 'swap', label: 'Swap', icon: ArrowRightLeft, accent: '#B5F36B', to: '/swap' },
+  { key: 'batch', label: 'Batch', icon: Blocks, accent: '#FFB457', to: '/batching' },
+  { key: 'dca', label: 'DCA', icon: Repeat, accent: '#A48DFF', to: '/dca' },
+  { key: 'lending', label: 'Lend', icon: PiggyBank, accent: '#7AE7C7', to: '/lending' },
 ] as const;
 
+const activityChartConfig = {
+  circles: { label: 'Circles', color: '#B5F36B' },
+  swaps: { label: 'Swaps', color: '#7CC8FF' },
+} as const;
+
+const exposureChartConfig = {
+  amount: { label: 'Monthly', color: '#B5F36B' },
+} as const;
+
+function toCircleTimestamp(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return Date.now();
+  return value > 1_000_000_000_000 ? value : value * 1000;
+}
+
+function getDayKey(timestamp: number) {
+  const date = new Date(timestamp);
+  date.setHours(0, 0, 0, 0);
+  return date.getTime();
+}
+
+function formatDayLabel(timestamp: number) {
+  return new Intl.DateTimeFormat('en-US', { weekday: 'short' }).format(timestamp);
+}
+
+function formatShortDate(timestamp: number) {
+  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(timestamp);
+}
+
+function formatShortDateTime(value: string) {
+  const timestamp = new Date(value).getTime();
+
+  if (!Number.isFinite(timestamp)) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(timestamp);
+}
+
+function truncateLabel(value: string, maxLength = 12) {
+  if (value.length <= maxLength) return value;
+  return `${value.slice(0, maxLength - 1)}…`;
+}
+
+function compareBigIntDesc(left: bigint, right: bigint) {
+  if (left === right) return 0;
+  return left > right ? -1 : 1;
+}
+
+function getStatusPill(status: string) {
+  switch (status) {
+    case 'ACTIVE':
+      return 'bg-sky-500/12 text-sky-700 dark:text-sky-300';
+    case 'COMPLETED':
+      return 'bg-emerald-500/12 text-emerald-700 dark:text-emerald-300';
+    case 'FAILED':
+      return 'bg-rose-500/12 text-rose-700 dark:text-rose-300';
+    default:
+      return 'bg-amber-500/12 text-amber-700 dark:text-amber-300';
+  }
+}
+
+function getLogStatusPill(status: string) {
+  switch (status) {
+    case 'confirmed':
+      return 'bg-emerald-500/12 text-emerald-700 dark:text-emerald-300';
+    case 'failed':
+      return 'bg-rose-500/12 text-rose-700 dark:text-rose-300';
+    default:
+      return 'bg-amber-500/12 text-amber-700 dark:text-amber-300';
+  }
+}
+
 export function DashboardPage() {
-  const { address, isConnected, balance } = useWallet();
-  const { circles, isLoading } = useUserCircles();
+  const {
+    address,
+    isConnected,
+    walletNotice,
+  } = useWallet();
+  const { circles } = useUserCircles();
   const { logs } = useStarkZapLogs();
-  const [activeTab, setActiveTab] = useState('active');
+  const { stats } = useReputation();
+  const {
+    requests,
+    readyToStartCircles,
+    pendingCount,
+    readyToStartCount,
+  } = useIncomingCircleRequests({ pollMs: 30000 });
 
   const activeCircles = circles.filter((circle) => circle.status === 'ACTIVE');
-  const pendingCircles = circles.filter((circle) => circle.status === 'PENDING');
-  const createdCircles = circles.filter((circle) => address && circle.creator.toLowerCase() === address.toLowerCase());
-  const pastCircles = circles.filter((circle) => circle.status === 'COMPLETED' || circle.status === 'FAILED');
+  const readyCircles = circles.filter((circle) => isCircleReadyToStart(circle));
+  const monthlyCommitted = circles.reduce((sum, circle) => sum + circle.monthlyAmount, 0n);
 
   const myLogs = useMemo(() => {
-    if (!address) return [];
-    return logs.filter((log) => log.account.toLowerCase() === address.toLowerCase());
+    if (!address) {
+      return [];
+    }
+
+    return logs.filter((entry) => entry.account.toLowerCase() === address.toLowerCase());
   }, [address, logs]);
 
-  const recentLogs = myLogs.slice(0, 4);
-  const monthlyCommitted = circles.reduce((sum, circle) => sum + circle.monthlyAmount, 0n);
-  const lockedCollateral = circles.reduce(
-    (sum, circle) => sum + ((circle.monthlyAmount * BigInt(circle.collateralRatio)) / 100n),
-    0n,
+  const recentCircles = useMemo(
+    () => [...circles].sort((left, right) => toCircleTimestamp(right.createdAt) - toCircleTimestamp(left.createdAt)).slice(0, 5),
+    [circles],
   );
-  const walletBalance = balance ? `${parseFloat(balance.formatted).toFixed(2)} ${balance.symbol}` : '0.00 STRK';
+
+  const recentSwapLogs = useMemo(
+    () => myLogs.filter((entry) => entry.kind === 'swap').slice(0, 5),
+    [myLogs],
+  );
+
+  const moduleCounts = useMemo(() => {
+    return MODULE_META.map((module) => ({
+      ...module,
+      count: myLogs.filter((entry) => entry.kind === module.key).length,
+    }));
+  }, [myLogs]);
+
+  const topModule = useMemo(
+    () => [...moduleCounts].sort((left, right) => right.count - left.count)[0] ?? null,
+    [moduleCounts],
+  );
+
+  const activitySeries = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const buckets = Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(today);
+      date.setDate(today.getDate() - (6 - index));
+      const timestamp = date.getTime();
+
+      return {
+        key: timestamp,
+        label: formatDayLabel(timestamp),
+        circles: 0,
+        swaps: 0,
+      };
+    });
+
+    const bucketIndex = new Map(buckets.map((bucket, index) => [bucket.key, index]));
+
+    circles.forEach((circle) => {
+      const key = getDayKey(toCircleTimestamp(circle.createdAt));
+      const index = bucketIndex.get(key);
+      if (index !== undefined) {
+        buckets[index].circles += 1;
+      }
+    });
+
+    myLogs.forEach((entry) => {
+      const key = getDayKey(new Date(entry.updatedAt).getTime());
+      const index = bucketIndex.get(key);
+      if (index !== undefined && entry.kind === 'swap') {
+        buckets[index].swaps += 1;
+      }
+    });
+
+    return buckets;
+  }, [circles, myLogs]);
+
+  const busiestDay = useMemo(() => {
+    const peak = activitySeries.reduce(
+      (best, item) => {
+        const total = item.circles + item.swaps;
+        return total > best.total ? { label: item.label, total } : best;
+      },
+      { label: 'Quiet', total: 0 },
+    );
+
+    return peak.total > 0 ? peak.label : 'Quiet';
+  }, [activitySeries]);
+
+  const exposureSeries = useMemo(() => {
+    return [...circles]
+      .sort((left, right) => compareBigIntDesc(left.monthlyAmount, right.monthlyAmount))
+      .slice(0, 5)
+      .reverse()
+      .map((circle) => ({
+        name: truncateLabel(circle.name, 14),
+        amount: Number(circle.monthlyAmount / 10n ** 18n),
+      }));
+  }, [circles]);
+
+  const dashboardOpsStats = useMemo(() => [
+    {
+      label: 'Ready',
+      value: readyToStartCount || readyCircles.length,
+      detail: 'to launch',
+      to: readyToStartCircles[0] ? getCirclePath(readyToStartCircles[0].circleId) : '/circles',
+    },
+    {
+      label: 'Pending',
+      value: pendingCount,
+      detail: 'approvals',
+      to: requests[0] ? getCirclePath(requests[0].circleId) : '/circles',
+    },
+    {
+      label: 'Recent',
+      value: recentCircles.length,
+      detail: 'circles',
+      to: recentCircles[0] ? getCirclePath(recentCircles[0].id) : '/circles/create',
+    },
+    {
+      label: 'Actions',
+      value: topModule?.count || 0,
+      detail: topModule?.label || 'modules',
+      to: topModule?.to || '/swap',
+    },
+  ], [pendingCount, readyCircles.length, readyToStartCircles, readyToStartCount, recentCircles, requests, topModule]);
 
   if (!isConnected) {
     return (
-      <div className="min-h-screen bg-[#FEFAE0] flex items-center justify-center">
-        <div className="neo-panel max-w-2xl p-10 text-center">
-          <div className="mx-auto mb-6 flex h-24 w-24 items-center justify-center border-[3px] border-black bg-[#FFE66D] shadow-[4px_4px_0px_0px_#1a1a1a]">
-            <Wallet className="h-11 w-11" />
+      <div className="space-y-4 pb-4">
+        <section className="neo-panel p-8 text-center md:p-10">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-[22px] border border-white/10 bg-white/6 text-white">
+            <Wallet className="h-7 w-7" />
           </div>
-          <div className="neo-chip mb-5 bg-white">Wallet Required</div>
-          <h2 className="text-4xl font-black mb-3">Open Your Dashboard</h2>
-          <p className="mx-auto max-w-xl text-lg leading-relaxed text-black/70">
-            Connect from the header to unlock your circle portfolio, StarkZap activity, quick actions, and on-chain wallet status.
-          </p>
-        </div>
+          <h2 className="font-display text-3xl font-semibold tracking-[-0.05em] text-foreground">
+            Connect to open the workspace
+          </h2>
+          <div className="mt-6 flex flex-wrap justify-center gap-3">
+            <Button asChild>
+              <Link to="/">Return to landing</Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link to="/circles">Browse circles</Link>
+            </Button>
+          </div>
+        </section>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#FEFAE0]">
-      <div className="border-b-[2px] border-black bg-white">
-        <div className="page-shell py-8 md:py-10">
-          <div className="grid gap-6 xl:grid-cols-[1.08fr_0.92fr]">
-            <section className="neo-panel neo-spotlight p-6 md:p-8">
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                <div className="neo-chip bg-[#FFE66D]">Wallet Workspace</div>
-                {CONTRACTS.CIRCLE_FACTORY !== '0x0' && (
-                  <a
-                    href={getVoyagerContractUrl(CONTRACTS.CIRCLE_FACTORY)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 border-[2px] border-black bg-white px-4 py-2 text-sm font-black uppercase tracking-[0.08em] shadow-[2px_2px_0px_0px_#1a1a1a]"
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                    Contracts
-                  </a>
-                )}
-              </div>
-
-              <h1 className="text-4xl font-black md:text-5xl">Dashboard</h1>
-              <p className="mt-3 max-w-2xl text-[15px] leading-relaxed text-black/70 md:text-base">
-                This is your live CircleSave command center: circle exposure, quick StarkZap actions, and recent wallet activity in one place.
+    <div className="space-y-4 pb-4">
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {[
+            { label: 'Active circles', value: activeCircles.length },
+            { label: 'Ready to launch', value: readyToStartCount || readyCircles.length },
+            { label: 'Approval queue', value: pendingCount },
+            { label: 'Monthly flow', value: formatAmountShort(monthlyCommitted) },
+          ].map((item) => (
+            <div key={item.label} className="rounded-[18px] border border-black/10 bg-black/[0.03] px-4 py-3 dark:border-white/10 dark:bg-white/5">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                {item.label}
               </p>
-
-              <div className="mt-6 flex flex-wrap gap-3">
-                <div className="neo-chip bg-white">
-                  <User className="h-4 w-4" />
-                  {formatAddress(address!)}
-                </div>
-                <div className="neo-chip bg-white">
-                  <Wallet className="h-4 w-4" />
-                  {walletBalance}
-                </div>
-                <div className="neo-chip bg-[#FEFAE0]">
-                  <TrendingUp className="h-4 w-4" />
-                  {activeCircles.length} Active Circles
-                </div>
-              </div>
-
-              <div className="mt-7 grid gap-4 md:grid-cols-3">
-                <div className="neo-stat-tile bg-[#fff8dc]">
-                  <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Monthly Commitment</p>
-                  <p className="mt-2 text-3xl font-black">{formatAmountShort(monthlyCommitted)}</p>
-                  <p className="mt-2 text-sm text-black/65">Across every circle linked to this wallet.</p>
-                </div>
-                <div className="neo-stat-tile bg-white">
-                  <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Locked Collateral</p>
-                  <p className="mt-2 text-3xl font-black">{formatAmountShort(lockedCollateral)}</p>
-                  <p className="mt-2 text-sm text-black/65">Current estimated circle security exposure.</p>
-                </div>
-                <div className="neo-stat-tile bg-white">
-                  <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Wallet Actions</p>
-                  <p className="mt-2 text-3xl font-black">{myLogs.length}</p>
-                  <p className="mt-2 text-sm text-black/65">Swap, DCA, and lending entries recorded in logs.</p>
-                </div>
-              </div>
-
-              <div className="mt-7 flex flex-wrap gap-3">
-                <Link to="/circles/create">
-                  <Button className="neo-button-primary">
-                    <Plus className="h-5 w-5" />
-                    Create Circle
-                  </Button>
-                </Link>
-                <Link to="/swap">
-                  <Button className="neo-button-secondary">
-                    <ArrowRightLeft className="h-5 w-5" />
-                    Open Swap
-                  </Button>
-                </Link>
-                <Link to="/logs">
-                  <Button variant="outline" className="border-[2px] border-black font-black">
-                    <FileText className="mr-2 h-4 w-4" />
-                    Review Logs
-                  </Button>
-                </Link>
-              </div>
-            </section>
-
-            <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
-              <div className="neo-panel p-6">
-                <div className="mb-4 flex items-center gap-3">
-                  <div className="flex h-12 w-12 items-center justify-center border-[2px] border-black bg-[#4ECDC4]">
-                    <TrendingUp className="h-6 w-6" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">At A Glance</p>
-                    <h2 className="text-2xl font-black">Signals</h2>
-                  </div>
-                </div>
-                <div className="space-y-3">
-                  {[
-                    { label: 'Active circles', value: activeCircles.length, color: '#4ECDC4' },
-                    { label: 'Pending circles', value: pendingCircles.length, color: '#FFE66D' },
-                    { label: 'Created by you', value: createdCircles.length, color: '#FF6B6B' },
-                    { label: 'Past circles', value: pastCircles.length, color: '#96CEB4' },
-                  ].map((item) => (
-                    <div key={item.label} className="flex items-center justify-between border-[2px] border-black bg-[#FEFAE0] px-4 py-3">
-                      <span className="text-sm font-black uppercase tracking-[0.08em]">{item.label}</span>
-                      <span className="text-xl font-black" style={{ color: item.color }}>{item.value}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="neo-panel p-6">
-                <div className="mb-4 flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Recent Wallet Activity</p>
-                    <h2 className="text-2xl font-black">Latest Moves</h2>
-                  </div>
-                  <Link to="/logs" className="text-sm font-black uppercase tracking-[0.08em] underline underline-offset-4">
-                    Full Logs
-                  </Link>
-                </div>
-                {recentLogs.length > 0 ? (
-                  <div className="space-y-3">
-                    {recentLogs.map((log) => {
-                      const meta = LOG_KIND_META[log.kind];
-                      const Icon = meta.icon;
-
-                      return (
-                        <div key={log.id} className="border-[2px] border-black bg-white p-4">
-                          <div className="flex items-start gap-3">
-                            <div
-                              className="flex h-10 w-10 shrink-0 items-center justify-center border-[2px] border-black"
-                              style={{ backgroundColor: meta.color }}
-                            >
-                              <Icon className="h-4 w-4 text-black" />
-                            </div>
-                            <div className="min-w-0">
-                              <p className="font-black">{log.title}</p>
-                              <p className="mt-1 text-sm leading-relaxed text-black/65">{log.summary}</p>
-                              <p className="mt-2 text-xs font-black uppercase tracking-[0.08em] text-black/45">
-                                {new Date(log.updatedAt).toLocaleString()}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="border-[2px] border-black bg-[#FEFAE0] p-6 text-center">
-                    <FileText className="mx-auto mb-3 h-10 w-10 text-black/25" />
-                    <h3 className="text-xl font-black">No wallet actions yet</h3>
-                    <p className="mt-2 text-sm leading-relaxed text-black/65">
-                      Use swap, DCA, or lending and your latest actions will show up here automatically.
-                    </p>
-                  </div>
-                )}
-              </div>
-            </section>
-          </div>
-        </div>
-      </div>
-
-      <div className="page-shell py-8 md:py-10">
-        <section className="mb-10">
-          <div className="mb-5 flex items-center justify-between gap-4">
-            <div>
-              <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Fast Access</p>
-              <h2 className="text-3xl font-black">Quick Actions</h2>
+              <p className="mt-1 text-lg font-semibold text-foreground">{item.value}</p>
             </div>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
-            {quickActions.map((action, index) => (
-              <Link key={action.title} to={action.to} className={`animate-fade-in stagger-${Math.min(index + 1, 6)}`}>
-                <div className="neo-panel h-full p-6 hover:bg-[#FEFAE0]">
-                  <action.icon className="mb-4 h-10 w-10" style={{ color: action.color }} />
-                  <h3 className="text-xl font-black">{action.title}</h3>
-                  <p className="mt-2 text-sm leading-relaxed text-black/65">{action.desc}</p>
-                </div>
-              </Link>
-            ))}
-          </div>
+          ))}
         </section>
 
-        <section className="mb-10">
-          <div className="mb-5 flex items-center justify-between gap-4">
-            <div>
-              <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Manage Circles</p>
-              <h2 className="text-3xl font-black">Your Circle Portfolio</h2>
-            </div>
-          </div>
+      {walletNotice ? (
+        <div className="rounded-[18px] border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+            <p className="font-semibold">{walletNotice.title}</p>
+            <p className="mt-1 text-amber-100/80">{walletNotice.description}</p>
+        </div>
+      ) : null}
 
-          {isLoading ? (
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              {Array.from({ length: 4 }, (_, index) => (
-                <div key={index} className={`neo-panel p-6 animate-pulse stagger-${Math.min(index + 1, 4)}`}>
-                  <div className="h-3 w-24 bg-black/10" />
-                  <div className="mt-4 h-8 w-40 bg-black/10" />
-                  <div className="mt-3 h-16 bg-black/10" />
-                  <div className="mt-5 h-12 bg-black/10" />
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.18fr)_minmax(320px,0.82fr)]">
+        <div className="space-y-4">
+          <div className="neo-panel p-4 md:p-5">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  Activity
+                </p>
+                <h3 className="font-display text-[1.35rem] font-semibold tracking-[-0.04em] text-foreground">
+                  Circle and swap trend
+                </h3>
+              </div>
+              <Button variant="outline" size="sm" asChild>
+                <Link to="/logs">
+                  <FileText className="h-4 w-4" />
+                  Logs
+                </Link>
+              </Button>
+            </div>
+
+            <ChartContainer config={activityChartConfig} className="aspect-auto h-[250px] w-full">
+              <AreaChart data={activitySeries} margin={{ top: 10, right: 8, left: -16, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="fill-circles" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="var(--color-circles)" stopOpacity={0.4} />
+                    <stop offset="95%" stopColor="var(--color-circles)" stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="fill-swaps" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="var(--color-swaps)" stopOpacity={0.28} />
+                    <stop offset="95%" stopColor="var(--color-swaps)" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                <XAxis dataKey="label" tickLine={false} axisLine={false} />
+                <ChartTooltip content={<ChartTooltipContent />} />
+                <Area
+                  type="monotone"
+                  dataKey="circles"
+                  stroke="var(--color-circles)"
+                  strokeWidth={2}
+                  fill="url(#fill-circles)"
+                />
+                <Area
+                  type="monotone"
+                  dataKey="swaps"
+                  stroke="var(--color-swaps)"
+                  strokeWidth={2}
+                  fill="url(#fill-swaps)"
+                />
+              </AreaChart>
+            </ChartContainer>
+
+            <div className="mt-4 grid gap-3 border-t border-black/8 pt-4 dark:border-white/10 sm:grid-cols-2 xl:grid-cols-4">
+              {[
+                { label: 'Circles 7d', value: activitySeries.reduce((sum, item) => sum + item.circles, 0) },
+                { label: 'Swaps 7d', value: activitySeries.reduce((sum, item) => sum + item.swaps, 0) },
+                { label: 'Live queue', value: pendingCount + readyToStartCount },
+                { label: 'Busiest day', value: busiestDay },
+              ].map((item) => (
+                <div key={item.label} className="rounded-[16px] border border-black/10 bg-black/[0.03] px-3.5 py-3 dark:border-white/10 dark:bg-white/5">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    {item.label}
+                  </p>
+                  <p className="mt-1 text-base font-semibold text-foreground">{item.value}</p>
                 </div>
               ))}
             </div>
-          ) : (
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full animate-fade-in">
-              <TabsList className="sticky top-[5.9rem] z-20 mb-8 flex h-auto w-full flex-wrap justify-start rounded-none border-[2px] border-black bg-white p-1 shadow-[4px_4px_0px_0px_#1a1a1a]">
-                <TabsTrigger value="active" className="rounded-none px-5 py-2.5 text-base font-bold data-[state=active]:bg-black data-[state=active]:text-white">
-                  <TrendingUp className="mr-2 h-5 w-5" />
-                  Active ({activeCircles.length})
-                </TabsTrigger>
-                <TabsTrigger value="pending" className="rounded-none px-5 py-2.5 text-base font-bold data-[state=active]:bg-black data-[state=active]:text-white">
-                  <Clock className="mr-2 h-5 w-5" />
-                  Pending ({pendingCircles.length})
-                </TabsTrigger>
-                <TabsTrigger value="created" className="rounded-none px-5 py-2.5 text-base font-bold data-[state=active]:bg-black data-[state=active]:text-white">
-                  <User className="mr-2 h-5 w-5" />
-                  Created ({createdCircles.length})
-                </TabsTrigger>
-                <TabsTrigger value="past" className="rounded-none px-5 py-2.5 text-base font-bold data-[state=active]:bg-black data-[state=active]:text-white">
-                  <CheckCircle className="mr-2 h-5 w-5" />
-                  Past ({pastCircles.length})
-                </TabsTrigger>
-              </TabsList>
+          </div>
 
-              {['active', 'pending', 'created', 'past'].map((tab) => {
-                const tabCircles = tab === 'active'
-                  ? activeCircles
-                  : tab === 'pending'
-                    ? pendingCircles
-                    : tab === 'created'
-                      ? createdCircles
-                      : pastCircles;
+          <div className="neo-panel p-4 md:p-5">
+            <div className="mb-4">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                Operations
+              </p>
+              <h3 className="font-display text-[1.35rem] font-semibold tracking-[-0.04em] text-foreground">
+                Snapshot
+              </h3>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {dashboardOpsStats.map((row) => (
+                <Link
+                  key={row.label}
+                  to={row.to}
+                  className="rounded-[18px] border border-black/10 bg-black/[0.03] px-4 py-3 transition duration-200 hover:bg-black/[0.05] dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/8"
+                >
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    {row.label}
+                  </p>
+                  <p className="mt-2 text-[1.55rem] font-semibold leading-none text-foreground">{row.value}</p>
+                  <p className="mt-2 truncate text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    {row.detail}
+                  </p>
+                </Link>
+              ))}
+            </div>
+          </div>
+
+          <div className="neo-panel p-4 md:p-5">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  Circles
+                </p>
+                <h3 className="font-display text-[1.35rem] font-semibold tracking-[-0.04em] text-foreground">
+                  Recent circles
+                </h3>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" asChild>
+                  <Link to="/circles">Open</Link>
+                </Button>
+                <Button size="sm" asChild>
+                  <Link to="/circles/create">
+                    <Plus className="h-4 w-4" />
+                    Create
+                  </Link>
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-2.5">
+              {recentCircles.length > 0 ? recentCircles.map((circle) => (
+                <Link
+                  key={circle.id}
+                  to={getCirclePath(circle.id)}
+                  className="grid gap-3 rounded-[18px] border border-black/10 bg-black/[0.03] px-4 py-3 transition duration-200 hover:bg-black/[0.05] dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/8 md:grid-cols-[minmax(0,1.2fr)_auto_auto_auto]"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-foreground">{circle.name}</p>
+                    <p className="mt-1 text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                      {formatShortDate(toCircleTimestamp(circle.createdAt))}
+                    </p>
+                  </div>
+                  <div className="text-sm font-semibold text-foreground">
+                    {circle.currentMembers}/{circle.maxMembers}
+                  </div>
+                  <div className="text-sm font-semibold text-foreground">
+                    {formatAmountShort(circle.monthlyAmount)}
+                  </div>
+                  <div className="md:text-right">
+                    <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${getStatusPill(circle.status)}`}>
+                      {circle.status}
+                    </span>
+                  </div>
+                </Link>
+              )) : (
+                <div className="rounded-[18px] border border-dashed border-black/10 px-4 py-8 text-center text-sm text-muted-foreground dark:border-white/10">
+                  No circles yet.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <div className="neo-panel p-4 md:p-5">
+            <div className="mb-4">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                Exposure
+              </p>
+              <h3 className="font-display text-[1.35rem] font-semibold tracking-[-0.04em] text-foreground">
+                Top circle sizes
+              </h3>
+            </div>
+
+            <ChartContainer config={exposureChartConfig} className="aspect-auto h-[250px] w-full">
+              <BarChart data={exposureSeries} layout="vertical" margin={{ top: 0, right: 6, left: 8, bottom: 0 }}>
+                <CartesianGrid horizontal={false} strokeDasharray="3 3" />
+                <XAxis type="number" tickLine={false} axisLine={false} />
+                <YAxis
+                  type="category"
+                  dataKey="name"
+                  tickLine={false}
+                  axisLine={false}
+                  width={82}
+                />
+                <ChartTooltip content={<ChartTooltipContent />} />
+                <Bar dataKey="amount" fill="var(--color-amount)" radius={[8, 8, 8, 8]} />
+              </BarChart>
+            </ChartContainer>
+          </div>
+
+          <div className="neo-panel p-4 md:p-5">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  Automation
+                </p>
+                <h3 className="font-display text-[1.35rem] font-semibold tracking-[-0.04em] text-foreground">
+                  Module flow
+                </h3>
+              </div>
+              <div className="neo-chip">{myLogs.length} actions</div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              {moduleCounts.map((module) => {
+                const Icon = module.icon;
 
                 return (
-                  <TabsContent key={tab} value={tab}>
-                    {tabCircles.length > 0 ? (
-                      <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-                        {tabCircles.map((circle, index) => (
-                          <div key={circle.id} className={`animate-fade-in stagger-${Math.min(index + 1, 6)}`}>
-                            <CircleCard circle={circle} />
-                          </div>
-                        ))}
+                  <Link
+                    key={module.key}
+                    to={module.to}
+                    className="flex items-center justify-between gap-3 rounded-[18px] border border-black/10 bg-black/[0.03] px-3.5 py-3 transition duration-200 hover:bg-black/[0.05] dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/8"
+                  >
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px] border border-black/10 dark:border-white/10"
+                        style={{ backgroundColor: `${module.accent}24`, color: module.accent }}
+                      >
+                        <Icon className="h-3.5 w-3.5" />
                       </div>
-                    ) : (
-                      <div className="neo-panel p-12 text-center animate-fade-in">
-                        <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center border-[3px] border-black bg-[#FEFAE0]">
-                          <Users className="h-9 w-9 text-black/35" />
-                        </div>
-                        <h3 className="text-3xl font-black">No {tab} circles yet</h3>
-                        <p className="mx-auto mt-3 max-w-2xl text-lg leading-relaxed text-black/65">
-                          {circles.length === 0
-                            ? 'You have not joined or created a circle yet. Start with a new group or discover an existing one.'
-                            : `You do not have any circles in the ${tab} state right now.`}
-                        </p>
-                        <div className="mt-6 flex flex-wrap justify-center gap-3">
-                          <Link to="/circles">
-                            <Button className="neo-button-secondary">Discover Circles</Button>
-                          </Link>
-                          <Link to="/circles/create">
-                            <Button className="neo-button-primary">
-                              <Plus className="h-5 w-5" />
-                              Create Circle
-                            </Button>
-                          </Link>
-                        </div>
-                      </div>
-                    )}
-                  </TabsContent>
+                      <span className="truncate text-sm font-semibold text-foreground">{module.label}</span>
+                    </div>
+                    <span className="text-sm font-semibold text-muted-foreground">{module.count}</span>
+                  </Link>
                 );
               })}
-            </Tabs>
-          )}
-        </section>
-      </div>
+            </div>
+          </div>
+
+          <div className="grid gap-4 xl:grid-cols-2">
+            <div className="neo-panel p-4 md:p-5">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    Swaps
+                  </p>
+                  <h3 className="font-display text-[1.35rem] font-semibold tracking-[-0.04em] text-foreground">
+                    Recent swaps
+                  </h3>
+                </div>
+                <Button variant="outline" size="sm" asChild>
+                  <Link to="/swap">Open swap</Link>
+                </Button>
+              </div>
+
+              <div className="space-y-2.5">
+                {recentSwapLogs.length > 0 ? recentSwapLogs.map((entry) => (
+                  <Link
+                    key={entry.id}
+                    to="/logs"
+                    className="block rounded-[18px] border border-black/10 bg-black/[0.03] px-4 py-3 transition duration-200 hover:bg-black/[0.05] dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/8"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-foreground">{entry.title}</p>
+                        <p className="mt-1 truncate text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                          {getStarkZapLogAmountText(entry) || entry.summary}
+                        </p>
+                      </div>
+                      <span className={`inline-flex shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${getLogStatusPill(entry.status)}`}>
+                        {entry.status}
+                      </span>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                      <span>{entry.provider}</span>
+                      <span>{formatShortDateTime(entry.updatedAt)}</span>
+                    </div>
+                  </Link>
+                )) : (
+                  <div className="rounded-[18px] border border-dashed border-black/10 px-4 py-8 text-center text-sm text-muted-foreground dark:border-white/10">
+                    No swap activity yet.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="neo-panel p-4 md:p-5">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    Queue
+                  </p>
+                  <h3 className="font-display text-[1.35rem] font-semibold tracking-[-0.04em] text-foreground">
+                    Creator actions
+                  </h3>
+                </div>
+                <div className="neo-chip">
+                  <Users className="h-3.5 w-3.5" />
+                  {pendingCount + readyToStartCount}
+                </div>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+                {[
+                  { label: 'Reputation', value: stats?.reputationScore || 0 },
+                  { label: 'Requests', value: pendingCount },
+                  { label: 'Ready', value: readyToStartCount || readyCircles.length },
+                ].map((item) => (
+                  <div key={item.label} className="rounded-[18px] border border-black/10 bg-black/[0.03] px-3.5 py-3 dark:border-white/10 dark:bg-white/5">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                      {item.label}
+                    </p>
+                    <p className="mt-1 text-base font-semibold text-foreground">{item.value}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-3 space-y-2.5">
+                {readyToStartCircles.slice(0, 2).map((circle) => (
+                  <Link
+                    key={circle.id}
+                    to={getCirclePath(circle.circleId)}
+                    className="flex items-center justify-between gap-3 rounded-[18px] border border-black/10 bg-black/[0.03] px-4 py-3 transition duration-200 hover:bg-black/[0.05] dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/8"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-foreground">{circle.circleName}</p>
+                      <p className="truncate text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                        {circle.currentMembers}/{circle.maxMembers} joined
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-[#B5F36B]/14 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-foreground">
+                      Start
+                    </span>
+                  </Link>
+                ))}
+
+                {requests.slice(0, 2).map((request) => (
+                  <Link
+                    key={request.id}
+                    to={getCirclePath(request.circleId)}
+                    className="flex items-center justify-between gap-3 rounded-[18px] border border-black/10 bg-black/[0.03] px-4 py-3 transition duration-200 hover:bg-black/[0.05] dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/8"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-foreground">{request.circleName}</p>
+                      <p className="truncate text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                        Request from {formatAddress(request.applicantAddress)}
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-[#FFB457]/14 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-foreground">
+                      Review
+                    </span>
+                  </Link>
+                ))}
+
+                {readyToStartCircles.length === 0 && requests.length === 0 ? (
+                  <div className="rounded-[18px] border border-dashed border-black/10 px-4 py-8 text-center text-sm text-muted-foreground dark:border-white/10">
+                    No actions waiting right now.
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

@@ -1,147 +1,222 @@
+import type { KeyboardEvent } from 'react';
 import { Link } from 'react-router-dom';
+import { ArrowRight, Sparkles } from 'lucide-react';
 import type { Circle } from '@/types';
 import { Button } from '@/components/ui/button';
-import { Wallet, Users, Lock, ArrowRight, Sparkles, ShieldCheck, TrendingUp } from 'lucide-react';
-import { 
-  formatAmount, 
-  getCategoryColor, 
+import { getCircleSpotsLeft, isCircleReadyToStart } from '@/lib/circleState';
+import {
+  formatAddress,
+  formatAmountShort,
+  getCategoryColor,
   getCategoryLabel,
+  getCircleTypeLabel,
 } from '@/lib/constants';
+import { getCirclePath } from '@/lib/routes';
+import { cn } from '@/lib/utils';
 
 interface CircleCardProps {
   circle: Circle;
+  variant?: 'default' | 'compact';
+  onSelect?: (circle: Circle) => void;
 }
 
-export function CircleCard({ circle }: CircleCardProps) {
-  const progress = (circle.currentMembers / circle.maxMembers) * 100;
-  const spotsLeft = circle.maxMembers - circle.currentMembers;
+function getStatusClasses(status: string) {
+  switch (status) {
+    case 'ACTIVE':
+      return 'bg-emerald-500/12 text-emerald-700 dark:text-emerald-300';
+    case 'COMPLETED':
+      return 'bg-sky-500/12 text-sky-700 dark:text-sky-300';
+    case 'FAILED':
+      return 'bg-rose-500/12 text-rose-700 dark:text-rose-300';
+    default:
+      return 'bg-amber-500/12 text-amber-700 dark:text-amber-300';
+  }
+}
+
+function getAvailabilityMeta(circle: Circle, readyToStart: boolean, spotsLeft: number) {
+  if (circle.status === 'ACTIVE') {
+    return {
+      label: 'In progress',
+      classes: 'bg-sky-500/12 text-sky-700 dark:text-sky-300',
+    };
+  }
+
+  if (circle.status === 'COMPLETED') {
+    return {
+      label: 'Completed',
+      classes: 'bg-emerald-500/12 text-emerald-700 dark:text-emerald-300',
+    };
+  }
+
+  if (circle.status === 'FAILED') {
+    return {
+      label: 'Needs review',
+      classes: 'bg-rose-500/12 text-rose-700 dark:text-rose-300',
+    };
+  }
+
+  if (readyToStart) {
+    return {
+      label: 'Ready to launch',
+      classes: 'bg-[#B5F36B]/16 text-foreground',
+    };
+  }
+
+  if (spotsLeft === 0) {
+    return {
+      label: 'Filled',
+      classes: 'bg-white/10 text-foreground',
+    };
+  }
+
+  if (spotsLeft <= 2) {
+    return {
+      label: `${spotsLeft} spot${spotsLeft === 1 ? '' : 's'} left`,
+      classes: 'bg-[#FFB457]/16 text-foreground',
+    };
+  }
+
+  return {
+    label: `${spotsLeft} spots open`,
+    classes: 'bg-white/10 text-muted-foreground',
+  };
+}
+
+export function CircleCard({ circle, variant = 'default', onSelect }: CircleCardProps) {
+  const spotsLeft = getCircleSpotsLeft(circle);
+  const readyToStart = isCircleReadyToStart(circle);
   const collateralAmount = (circle.monthlyAmount * BigInt(circle.collateralRatio)) / 100n;
   const categoryColor = getCategoryColor(circle.category);
   const categoryLabel = getCategoryLabel(circle.category);
+  const circleTypeLabel = getCircleTypeLabel(circle.circleType);
+  const availability = getAvailabilityMeta(circle, readyToStart, spotsLeft);
+  const isCompact = variant === 'compact';
 
-  const getStatusStyle = (status: string) => {
-    switch (status) {
-      case 'ACTIVE': return 'bg-green-400 text-black';
-      case 'COMPLETED': return 'bg-blue-400 text-white';
-      case 'FAILED': return 'bg-red-400 text-white';
-      default: return 'bg-yellow-400 text-black';
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (!onSelect) return;
+
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      onSelect(circle);
     }
   };
 
-  return (
-    <div className="neo-card group flex h-full min-w-0 flex-col overflow-hidden p-6">
-      <div
-        className="mb-5 h-3 w-24 border-[2px] border-black transition-all duration-200 group-hover:w-32"
-        style={{ backgroundColor: categoryColor }}
-      />
-
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <div
-          className="px-3 py-1.5 text-xs font-black uppercase tracking-wider border-[2px] border-black"
-          style={{ backgroundColor: categoryColor, color: '#1a1a1a' }}
-        >
-          {categoryLabel}
-        </div>
-        <div className={`px-3 py-1.5 text-xs font-black border-[2px] border-black uppercase tracking-wider ${getStatusStyle(circle.status)}`}>
-          {circle.status}
-        </div>
-      </div>
-
-      <h3 className="mb-2 text-[1.7rem] font-black leading-tight transition-colors group-hover:text-[#FF6B6B]">
-        {circle.name}
-      </h3>
-
-      <p className="mb-2 text-[15px] font-medium text-gray-600">
-        by <span className="font-bold text-black">{circle.creator.slice(0, 6)}...{circle.creator.slice(-4)}</span>
-      </p>
-
-      <p className="mb-5 line-clamp-2 text-[15px] leading-relaxed text-black/70">
-        {circle.description || `A ${categoryLabel.toLowerCase()} savings circle with ${circle.maxMembers} slots and on-chain collateral coordination.`}
-      </p>
-
-      <div className="mb-5 grid grid-cols-3 gap-2.5">
-        <div className="bg-[#FEFAE0] border-[2px] border-black p-3 text-center min-w-0">
-          <Wallet className="w-5 h-5 mx-auto mb-1 text-[#4ECDC4]" />
-          <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-gray-600">Monthly</p>
-          <p className="mt-1 text-[1.1rem] font-black leading-tight break-words">{formatAmount(circle.monthlyAmount)}</p>
-        </div>
-        <div className="bg-[#FEFAE0] border-[2px] border-black p-3 text-center min-w-0">
-          <Users className="w-5 h-5 mx-auto mb-1 text-[#FF6B6B]" />
-          <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-gray-600">Members</p>
-          <p className="mt-1 text-[1.1rem] font-black leading-tight">{circle.currentMembers}/{circle.maxMembers}</p>
-        </div>
-        <div className="bg-[#FEFAE0] border-[2px] border-black p-3 text-center min-w-0">
-          <Lock className="w-5 h-5 mx-auto mb-1 text-[#FFE66D]" />
-          <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-gray-600">Collateral</p>
-          <p className="mt-1 text-[1.1rem] font-black leading-tight break-words">{formatAmount(collateralAmount)}</p>
-        </div>
-      </div>
-
-      <div className="mb-4 grid gap-3">
-        <div className="flex items-center justify-between gap-3 border-[2px] border-black bg-white px-3 py-2.5">
-          <div className="flex min-w-0 items-center gap-2">
-            <ShieldCheck className="h-4 w-4 text-[#4ECDC4]" />
-            <span className="text-xs font-black uppercase tracking-[0.08em] leading-tight">Why it stands out</span>
-          </div>
-          <span className="shrink-0 text-sm font-black">{circle.collateralRatio / 100}x cover</span>
-        </div>
-        <div className="flex items-center justify-between gap-3 border-[2px] border-black bg-white px-3 py-2.5">
-          <div className="flex min-w-0 items-center gap-2">
-            <TrendingUp className="h-4 w-4 text-[#FF6B6B]" />
-            <span className="text-xs font-black uppercase tracking-[0.08em] leading-tight">Join pressure</span>
-          </div>
-          <span className="shrink-0 text-sm font-black">
-            {spotsLeft === 0 ? 'Filled' : `${spotsLeft} spot${spotsLeft > 1 ? 's' : ''} left`}
-          </span>
-        </div>
-      </div>
-
-      <div className="mb-5">
-        <div className="mb-1.5 flex justify-between text-sm font-bold">
-          <span>Membership Progress</span>
-          <span>{Math.round(progress)}%</span>
-        </div>
-        <div className="neo-progress">
-          <div
-            className="neo-progress-bar bg-[#4ECDC4]"
-            style={{ width: `${progress}%` }}
-          />
-        </div>
-      </div>
-
-      {spotsLeft > 0 && spotsLeft <= 3 && (
-        <div className="mb-5 flex items-center gap-2 border-[2px] border-black bg-[#FF6B6B] px-3 py-2.5">
-          <Sparkles className="w-5 h-5 text-white flex-shrink-0" />
-          <span className="text-base font-black text-white">
-            Only {spotsLeft} spot{spotsLeft > 1 ? 's' : ''} left!
-          </span>
-        </div>
-      )}
-
-      <div className="mt-auto">
-        <Link to={`/circles/${circle.id}`}>
-          <Button
-            className={`w-full font-black border-[2px] border-black transition-all text-[15px] py-2.5
-              ${spotsLeft === 0 
-                ? 'bg-gray-300 text-gray-600 cursor-not-allowed' 
-                : 'bg-[#FF6B6B] text-white hover:bg-[#ff5252] shadow-[3px_3px_0px_0px_#1a1a1a] hover:shadow-[4px_4px_0px_0px_#1a1a1a] hover:-translate-x-0.5 hover:-translate-y-0.5'
-              }`}
-            disabled={spotsLeft === 0}
+  const cardBody = (
+    <>
+      <div className="flex items-start justify-between gap-2.5">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <span
+            className="inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]"
+            style={{ backgroundColor: `${categoryColor}20`, color: categoryColor }}
           >
-            {spotsLeft === 0 ? (
-              'Circle Full'
-            ) : spotsLeft <= 2 ? (
-              <>
-                Join Now <ArrowRight className="w-5 h-5 ml-2" />
-              </>
-            ) : (
-              <>
-                View Details <ArrowRight className="w-5 h-5 ml-2" />
-              </>
+            {categoryLabel}
+          </span>
+          <span
+            className={cn(
+              'inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]',
+              getStatusClasses(circle.status),
             )}
-          </Button>
-        </Link>
+          >
+            {circle.status}
+          </span>
+        </div>
+        <span className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          {circleTypeLabel}
+        </span>
       </div>
+
+      <div className="mt-3 min-w-0">
+        <h3
+          className={cn(
+            'truncate font-display font-semibold tracking-[-0.04em] text-foreground',
+            isCompact ? 'text-[1.05rem]' : 'text-[1.2rem]',
+          )}
+        >
+          {circle.name}
+        </h3>
+        <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          <span>{formatAddress(circle.creator)}</span>
+          <span className="h-1 w-1 rounded-full bg-current/50" />
+          <span>{circle.currentMembers}/{circle.maxMembers} members</span>
+        </div>
+        {!isCompact && circle.description ? (
+          <p className="mt-2 line-clamp-1 text-sm text-muted-foreground">
+            {circle.description}
+          </p>
+        ) : null}
+      </div>
+
+      <div
+        className={cn(
+          'mt-3 grid overflow-hidden rounded-[16px] border border-black/10 bg-black/[0.03] dark:border-white/10 dark:bg-white/5',
+          isCompact ? 'grid-cols-2' : 'grid-cols-3',
+        )}
+      >
+        {[
+          { label: 'Monthly', value: formatAmountShort(circle.monthlyAmount) },
+          { label: 'Members', value: `${circle.currentMembers}/${circle.maxMembers}` },
+          ...(!isCompact ? [{ label: 'Collateral', value: formatAmountShort(collateralAmount) }] : []),
+        ].map((item, index) => (
+          <div
+            key={item.label}
+            className={cn(
+              'min-w-0 px-3 py-2.5',
+              index > 0 && 'border-l border-black/10 dark:border-white/10',
+            )}
+          >
+            <p className="truncate text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              {item.label}
+            </p>
+            <p className="mt-1 truncate text-sm font-semibold text-foreground">
+              {item.value}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-3 flex items-center justify-between gap-3">
+        <span
+          className={cn(
+            'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em]',
+            availability.classes,
+          )}
+        >
+          <Sparkles className="h-3.5 w-3.5" />
+          {availability.label}
+        </span>
+
+        {onSelect ? (
+          <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-foreground">
+            View
+            <ArrowRight className="h-4 w-4" />
+          </span>
+        ) : (
+          <Button asChild size="sm" variant="secondary">
+            <Link to={getCirclePath(circle.id)}>
+              Open
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </Button>
+        )}
+      </div>
+    </>
+  );
+
+  return (
+    <div
+      role={onSelect ? 'button' : undefined}
+      tabIndex={onSelect ? 0 : undefined}
+      onClick={onSelect ? () => onSelect(circle) : undefined}
+      onKeyDown={onSelect ? handleKeyDown : undefined}
+      className={cn(
+        'group flex h-full min-w-0 flex-col overflow-hidden rounded-[20px] border border-black/10 bg-black/[0.03] shadow-[0_20px_52px_-36px_rgba(15,23,42,0.3)] backdrop-blur-xl transition duration-200 dark:border-white/10 dark:bg-white/5 dark:shadow-[0_24px_64px_-40px_rgba(0,0,0,0.8)]',
+        isCompact ? 'p-3.5' : 'p-4',
+        onSelect
+          ? 'cursor-pointer text-left hover:-translate-y-0.5 hover:border-[#B5F36B]/18 hover:bg-black/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B5F36B]/60 dark:hover:bg-white/8'
+          : 'hover:-translate-y-0.5 hover:border-[#B5F36B]/18 hover:bg-black/[0.05] dark:hover:bg-white/8',
+      )}
+    >
+      {cardBody}
     </div>
   );
 }

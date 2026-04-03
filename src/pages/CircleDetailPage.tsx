@@ -1,134 +1,184 @@
-import { useParams, Link } from 'react-router-dom';
-import { useCircleDetail, useJoinCircle, useContribute, useStartCircle } from '@/hooks/useCircle';
-import { useWallet } from '@/hooks/useWallet';
-import { CircleFundingStudio } from '@/components/circles/CircleFundingStudio';
-import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { 
-  Users, 
-  Wallet, 
-  Lock, 
-  ArrowLeft, 
-  Share2, 
-  CheckCircle,
+import { useMemo, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
+import {
   AlertCircle,
-  TrendingUp,
   ExternalLink,
   Loader2,
-  ArrowRightLeft
+  Send,
+  Share2,
+  ShieldAlert,
+  Sparkles,
+  TrendingUp,
+  Users,
+  Wallet,
 } from 'lucide-react';
-import { 
-  formatAmount, 
-  getCategoryColor, 
+import {
+  useApproveMember,
+  useCircleDetail,
+  useCompleteCircle,
+  useContribute,
+  useDistributePot,
+  useEmergencyWithdraw,
+  useJoinCircle,
+  useRejectMember,
+  useRequestJoinCircle,
+  useStartCircle,
+} from '@/hooks/useCircle';
+import { useWallet } from '@/hooks/useWallet';
+import { CircleRequestsPanel } from '@/components/circles/CircleRequestsPanel';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  formatAmount,
+  formatAddress,
+  getCategoryColor,
   getCategoryLabel,
   getCircleTypeLabel,
   getVoyagerContractUrl,
 } from '@/lib/constants';
+import { getCircleSpotsLeft, isCircleFull, isCircleReadyToStart } from '@/lib/circleState';
+import type { CircleJoinRequest } from '@/types';
 import { toast } from 'sonner';
+
+function getStatusClasses(status: string) {
+  switch (status) {
+    case 'ACTIVE':
+      return 'bg-emerald-500/14 text-emerald-300';
+    case 'COMPLETED':
+      return 'bg-sky-500/14 text-sky-300';
+    case 'FAILED':
+      return 'bg-rose-500/14 text-rose-300';
+    default:
+      return 'bg-amber-500/14 text-amber-300';
+  }
+}
+
+function SuccessToast({ label, voyagerUrl }: { label: string; voyagerUrl: string }) {
+  return (
+    <div>
+      {label}{' '}
+      <a href={voyagerUrl} target="_blank" rel="noopener noreferrer" className="underline font-semibold">
+        View on Voyager
+      </a>
+    </div>
+  );
+}
 
 export function CircleDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const circleId = id ? decodeURIComponent(id) : '';
   const { isConnected } = useWallet();
-  const { circle, members, isLoading, error, isMember, isCreator, refetch } = useCircleDetail(id || '');
+  const {
+    circle,
+    members,
+    pendingRequests,
+    hasPendingRequest,
+    isLoading,
+    error,
+    isMember,
+    isCreator,
+    refetch,
+  } = useCircleDetail(circleId);
+
   const { joinCircle, isSubmitting: joining } = useJoinCircle();
+  const { requestJoinCircle, isSubmitting: requestingJoin } = useRequestJoinCircle();
   const { contribute, isSubmitting: contributing } = useContribute();
   const { startCircle: startCircleAction, isSubmitting: starting } = useStartCircle();
+  const { distributePot, isSubmitting: distributing } = useDistributePot();
+  const { completeCircle, isSubmitting: completing } = useCompleteCircle();
+  const { emergencyWithdraw, isSubmitting: withdrawingEmergency } = useEmergencyWithdraw();
+  const { approveMember } = useApproveMember();
+  const { rejectMember } = useRejectMember();
+
+  const [requestDialogOpen, setRequestDialogOpen] = useState(false);
+  const [requestMessage, setRequestMessage] = useState('');
+  const [actingRequestId, setActingRequestId] = useState<string | null>(null);
+  const [actingRequestAction, setActingRequestAction] = useState<'approve' | 'reject' | null>(null);
+  const schedulePreview = useMemo(
+    () => Array.from({ length: Math.min(circle?.maxMembers ?? 0, 6) }, (_, index) => {
+      const month = index + 1;
+      return {
+        month,
+        state:
+          month < (circle?.currentMonth ?? 0)
+            ? 'Done'
+            : month === (circle?.currentMonth ?? 0) && circle?.status === 'ACTIVE'
+              ? 'Current'
+              : 'Upcoming',
+      };
+    }),
+    [circle?.currentMonth, circle?.maxMembers, circle?.status],
+  );
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-[#FEFAE0] flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="w-16 h-16 animate-spin mx-auto mb-4 text-[#FF6B6B]" />
-          <p className="font-bold text-gray-600 text-lg">Loading circle from blockchain...</p>
-        </div>
+      <div className="space-y-4 pb-4">
+        <section className="neo-panel p-10 text-center">
+          <Loader2 className="mx-auto mb-4 h-8 w-8 animate-spin text-primary" />
+          <h2 className="font-display text-2xl font-semibold tracking-[-0.05em] text-foreground">
+            Loading circle
+          </h2>
+        </section>
       </div>
     );
   }
 
   if (!circle || error) {
     return (
-      <div className="min-h-screen bg-[#FEFAE0] flex items-center justify-center">
-        <div className="text-center animate-fade-in">
-          <div className="w-28 h-28 bg-gray-200 border-[3px] border-black mx-auto mb-6 flex items-center justify-center">
-            <AlertCircle className="w-12 h-12 text-gray-400" />
+      <div className="space-y-4 pb-4">
+        <section className="neo-panel p-10 text-center">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-[22px] border border-white/10 bg-white/6 text-white">
+            <AlertCircle className="h-7 w-7" />
           </div>
-          <h2 className="text-3xl font-black mb-3">Circle Not Found</h2>
-          <p className="text-gray-600 mb-6 text-lg">{error || "The circle you're looking for doesn't exist."}</p>
-          <Link to="/circles">
-            <Button className="neo-button-primary">Browse Circles</Button>
-          </Link>
-        </div>
+          <h2 className="font-display text-3xl font-semibold tracking-[-0.05em] text-foreground">
+            Circle not found
+          </h2>
+          <p className="mt-2 text-sm text-muted-foreground">{error || 'This circle is unavailable right now.'}</p>
+          <div className="mt-6">
+            <Button asChild>
+              <Link to="/circles">Back to circles</Link>
+            </Button>
+          </div>
+        </section>
       </div>
     );
   }
 
   const collateralAmount = (circle.monthlyAmount * BigInt(circle.collateralRatio)) / 100n;
   const progress = (circle.currentMembers / circle.maxMembers) * 100;
-  const spotsLeft = circle.maxMembers - circle.currentMembers;
+  const spotsLeft = getCircleSpotsLeft(circle);
   const categoryColor = getCategoryColor(circle.category);
   const categoryLabel = getCategoryLabel(circle.category);
   const circleTypeLabel = getCircleTypeLabel(circle.circleType);
-  const canJoin = !isMember && circle.status === 'PENDING' && spotsLeft > 0;
+  const isApprovalRequired = circle.circleType === 1;
+  const readyToStart = isCircleReadyToStart(circle);
+
+  const canJoinDirect = !isCreator && !isMember && circle.status === 'PENDING' && spotsLeft > 0 && !isApprovalRequired;
+  const canRequestJoin = !isCreator && !isMember && circle.status === 'PENDING' && spotsLeft > 0 && isApprovalRequired && !hasPendingRequest;
   const canContribute = isMember && circle.status === 'ACTIVE';
-  const canStart = isCreator && circle.status === 'PENDING' && circle.currentMembers >= 2;
+  const canStart = isCreator && readyToStart;
+  const canManageRequests = isCreator && isApprovalRequired && circle.status === 'PENDING';
+  const canDistribute = circle.status === 'ACTIVE' && (isCreator || isMember);
+  const canComplete = circle.status === 'ACTIVE' && isCreator;
+  const canEmergencyWithdraw = circle.status === 'FAILED' && isMember;
+  const creatorWaitingForMembers = isCreator && circle.status === 'PENDING' && !isCircleFull(circle);
+  const waitingForCreatorToStart = !isCreator && circle.status === 'PENDING' && isCircleFull(circle);
+  const memberPreview = members.slice(0, 6);
+  const remainingMembers = Math.max(members.length - memberPreview.length, 0);
 
-  const handleJoin = async () => {
+  const ensureConnected = () => {
     if (!isConnected) {
       toast.error('Please connect your wallet first');
-      return;
+      return false;
     }
-    const result = await joinCircle(circle.contractAddress);
-    if (result) {
-      toast.success(
-        <div>
-          Successfully joined the circle!{' '}
-          <a href={result.voyagerUrl} target="_blank" rel="noopener noreferrer" className="underline font-bold">
-            View on Voyager →
-          </a>
-        </div>
-      );
-      refetch();
-    }
-  };
 
-  const handleContribute = async () => {
-    if (!isConnected) {
-      toast.error('Please connect your wallet first');
-      return;
-    }
-    const result = await contribute(circle.contractAddress, circle.monthlyAmount);
-    if (result) {
-      toast.success(
-        <div>
-          Contribution successful!{' '}
-          <a href={result.voyagerUrl} target="_blank" rel="noopener noreferrer" className="underline font-bold">
-            View on Voyager →
-          </a>
-        </div>
-      );
-      refetch();
-    }
-  };
-
-  const handleStart = async () => {
-    const result = await startCircleAction(circle.contractAddress);
-    if (result) {
-      toast.success(
-        <div>
-          Circle started!{' '}
-          <a href={result.voyagerUrl} target="_blank" rel="noopener noreferrer" className="underline font-bold">
-            View on Voyager →
-          </a>
-        </div>
-      );
-      refetch();
-    }
+    return true;
   };
 
   const handleShare = async () => {
-    const shareUrl = typeof window !== 'undefined'
-      ? window.location.href
-      : `${circle.id}`;
+    const shareUrl = typeof window !== 'undefined' ? window.location.href : `${circle.id}`;
     const shareData = {
       title: `${circle.name} on CircleSave`,
       text: `Join the "${circle.name}" savings circle on CircleSave.`,
@@ -138,7 +188,7 @@ export function CircleDetailPage() {
     try {
       if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
         await navigator.share(shareData);
-        toast.success('Circle shared successfully');
+        toast.success('Circle shared');
         return;
       }
     } catch (error) {
@@ -150,410 +200,501 @@ export function CircleDetailPage() {
     try {
       if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(shareUrl);
-        toast.success('Circle link copied to clipboard');
+        toast.success('Circle link copied');
         return;
       }
     } catch {
-      // Fall through to the manual copy fallback below.
-    }
-
-    if (typeof document !== 'undefined') {
-      const input = document.createElement('input');
-      input.value = shareUrl;
-      document.body.appendChild(input);
-      input.select();
-      document.execCommand('copy');
-      document.body.removeChild(input);
-      toast.success('Circle link copied to clipboard');
-      return;
+      // fall through
     }
 
     toast.error('Sharing is not available in this browser');
   };
 
-  return (
-    <div className="min-h-screen bg-[#FEFAE0]">
-      {/* Back Button */}
-      <div className="page-shell py-5">
-        <Link 
-          to="/circles" 
-          className="inline-flex items-center gap-2 font-bold text-gray-600 hover:text-black transition-colors text-base"
-        >
-          <ArrowLeft className="w-5 h-5" />
-          Back to Circles
-        </Link>
-      </div>
+  const handleJoin = async () => {
+    if (!ensureConnected()) return;
 
-      {/* Hero Section */}
-      <div className="content-divider-bottom bg-white border-b-[2px] border-black">
-        <div className="page-shell py-8 md:py-9">
-          {/* Header */}
-          <div className="animate-fade-in flex flex-wrap items-start justify-between gap-4 mb-6">
-            <div className="flex items-center gap-3">
-              <div 
-                className="px-4 py-2 text-sm font-black border-[2px] border-black uppercase tracking-wider"
-                style={{ backgroundColor: categoryColor }}
+    const outcome = await joinCircle(circle.contractAddress);
+    if (!outcome.ok) {
+      toast.error(outcome.error);
+      return;
+    }
+
+    toast.success(<SuccessToast label="Joined the circle." voyagerUrl={outcome.voyagerUrl} />);
+    await refetch();
+  };
+
+  const handleOpenRequestDialog = () => {
+    if (!ensureConnected()) return;
+    setRequestDialogOpen(true);
+  };
+
+  const handleSubmitJoinRequest = async () => {
+    if (!ensureConnected()) return;
+
+    const outcome = await requestJoinCircle(circle.contractAddress, requestMessage);
+    if (!outcome.ok) {
+      toast.error(outcome.error);
+      return;
+    }
+
+    toast.success(<SuccessToast label="Join request submitted." voyagerUrl={outcome.voyagerUrl} />);
+    setRequestMessage('');
+    setRequestDialogOpen(false);
+    await refetch();
+  };
+
+  const handleContribute = async () => {
+    if (!ensureConnected()) return;
+
+    const outcome = await contribute(circle.contractAddress, circle.monthlyAmount);
+    if (!outcome.ok) {
+      toast.error(outcome.error);
+      return;
+    }
+
+    toast.success(<SuccessToast label="Contribution submitted." voyagerUrl={outcome.voyagerUrl} />);
+    await refetch();
+  };
+
+  const handleStart = async () => {
+    if (!ensureConnected()) return;
+
+    const outcome = await startCircleAction(circle.contractAddress);
+    if (!outcome.ok) {
+      toast.error(outcome.error);
+      return;
+    }
+
+    toast.success(<SuccessToast label="Circle started." voyagerUrl={outcome.voyagerUrl} />);
+    await refetch();
+  };
+
+  const handleDistribute = async () => {
+    if (!ensureConnected()) return;
+
+    const outcome = await distributePot(circle.contractAddress);
+    if (!outcome.ok) {
+      toast.error(outcome.error);
+      return;
+    }
+
+    toast.success(<SuccessToast label="Distribution submitted." voyagerUrl={outcome.voyagerUrl} />);
+    await refetch();
+  };
+
+  const handleComplete = async () => {
+    if (!ensureConnected()) return;
+
+    const outcome = await completeCircle(circle.contractAddress);
+    if (!outcome.ok) {
+      toast.error(outcome.error);
+      return;
+    }
+
+    toast.success(<SuccessToast label="Circle completed." voyagerUrl={outcome.voyagerUrl} />);
+    await refetch();
+  };
+
+  const handleEmergencyWithdraw = async () => {
+    if (!ensureConnected()) return;
+
+    const outcome = await emergencyWithdraw(circle.contractAddress);
+    if (!outcome.ok) {
+      toast.error(outcome.error);
+      return;
+    }
+
+    toast.success(<SuccessToast label="Emergency exit submitted." voyagerUrl={outcome.voyagerUrl} />);
+    await refetch();
+  };
+
+  const handleApproveRequest = async (request: CircleJoinRequest) => {
+    if (!ensureConnected()) return;
+
+    setActingRequestId(request.id);
+    setActingRequestAction('approve');
+    try {
+      const outcome = await approveMember(request.circleAddress, request.applicantAddress);
+
+      if (!outcome.ok) {
+        toast.error(outcome.error);
+        return;
+      }
+
+      toast.success(<SuccessToast label="Request approved." voyagerUrl={outcome.voyagerUrl} />);
+      await refetch();
+    } finally {
+      setActingRequestId(null);
+      setActingRequestAction(null);
+    }
+  };
+
+  const handleRejectRequest = async (request: CircleJoinRequest) => {
+    if (!ensureConnected()) return;
+
+    setActingRequestId(request.id);
+    setActingRequestAction('reject');
+    try {
+      const outcome = await rejectMember(request.circleAddress, request.applicantAddress);
+
+      if (!outcome.ok) {
+        toast.error(outcome.error);
+        return;
+      }
+
+      toast.success(<SuccessToast label="Request rejected." voyagerUrl={outcome.voyagerUrl} />);
+      await refetch();
+    } finally {
+      setActingRequestId(null);
+      setActingRequestAction(null);
+    }
+  };
+
+  return (
+    <div className="space-y-4 pb-4">
+      <section className="neo-panel p-4 md:p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                className="rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em]"
+                style={{ backgroundColor: `${categoryColor}20`, color: categoryColor }}
               >
                 {categoryLabel}
-              </div>
-              <div className={`px-4 py-2 text-sm font-black border-[2px] border-black uppercase tracking-wider
-                ${circle.status === 'ACTIVE' ? 'bg-green-400 text-black' : 
-                  circle.status === 'COMPLETED' ? 'bg-blue-400 text-white' :
-                  circle.status === 'FAILED' ? 'bg-red-400 text-white' :
-                  'bg-yellow-400 text-black'}`}>
+              </span>
+              <span className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] ${getStatusClasses(circle.status)}`}>
                 {circle.status}
-              </div>
+              </span>
+              <span className="rounded-full border border-black/10 bg-black/[0.03] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground dark:border-white/10 dark:bg-white/6">
+                {circleTypeLabel}
+              </span>
+              {hasPendingRequest ? (
+                <span className="rounded-full bg-[#A48DFF]/14 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-foreground">
+                  Request sent
+                </span>
+              ) : null}
             </div>
-            <div className="flex gap-3">
-              <a
-                href={getVoyagerContractUrl(circle.contractAddress)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="p-3 border-[2px] border-black bg-white hover:bg-gray-50 transition-colors"
-                title="View on Voyager"
-              >
-                <ExternalLink className="w-5 h-5" />
-              </a>
-              <button
-                type="button"
-                onClick={handleShare}
-                className="p-3 border-[2px] border-black bg-white hover:bg-gray-50 transition-colors"
-                title="Share circle"
-              >
-                <Share2 className="w-5 h-5" />
-              </button>
-            </div>
+
+            <h2 className="mt-3 truncate font-display text-[1.35rem] font-semibold tracking-[-0.04em] text-foreground md:text-[1.55rem]">
+              {circle.name}
+            </h2>
+            {circle.description ? (
+              <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{circle.description}</p>
+            ) : null}
           </div>
 
-          {/* Title & Description */}
-          <h1 className="animate-fade-in stagger-1 text-4xl md:text-5xl font-black mb-4">{circle.name}</h1>
-          <p className="animate-fade-in stagger-2 text-xl text-gray-600 mb-6 max-w-2xl">{circle.description}</p>
+          <div className="flex flex-wrap gap-2">
+            <a
+              href={getVoyagerContractUrl(circle.contractAddress)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex h-9 items-center justify-center rounded-xl border border-black/10 bg-white/72 px-3.5 text-sm font-semibold text-foreground backdrop-blur-xl dark:border-white/10 dark:bg-white/6"
+            >
+              <ExternalLink className="mr-2 h-4 w-4" />
+              Voyager
+            </a>
+            <Button variant="outline" size="sm" onClick={handleShare}>
+              <Share2 className="h-4 w-4" />
+              Share
+            </Button>
+          </div>
+        </div>
 
-          {/* Creator */}
-          <div className="animate-fade-in stagger-2 flex items-center gap-3 mb-10">
-            <div className="w-12 h-12 bg-[#FEFAE0] border-[2px] border-black flex items-center justify-center font-bold text-lg">
-              {circle.creator.slice(2, 4)}
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {[
+            { label: 'Members', value: `${circle.currentMembers}/${circle.maxMembers}` },
+            { label: 'Spots left', value: spotsLeft },
+            { label: 'Monthly', value: formatAmount(circle.monthlyAmount) },
+            { label: 'Collateral', value: formatAmount(collateralAmount) },
+          ].map((item) => (
+            <div key={item.label} className="rounded-[16px] border border-black/10 bg-black/[0.03] px-3.5 py-3 dark:border-white/10 dark:bg-white/5">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                {item.label}
+              </p>
+              <p className="mt-1 text-sm font-semibold text-foreground">{item.value}</p>
             </div>
+          ))}
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          <div className="neo-chip">
+            <Users className="h-3.5 w-3.5" />
+            Creator {formatAddress(circle.creator)}
+          </div>
+          <div className="neo-chip">Total pot {formatAmount(circle.monthlyAmount * BigInt(circle.maxMembers))}</div>
+        </div>
+
+        <div className="mt-4">
+          <div className="mb-2 flex items-center justify-between text-sm">
+            <span className="font-semibold text-foreground">Membership fill</span>
+            <span className="text-muted-foreground">{Math.round(progress)}%</span>
+          </div>
+          <div className="neo-progress">
+            <div className="neo-progress-bar bg-[linear-gradient(90deg,#B5F36B,#7CC8FF)]" style={{ width: `${progress}%` }} />
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          <span
+            className="rounded-full bg-white/8 px-4 py-3 text-muted-foreground"
+          >
+            {circle.currentMonth > 0 ? `Round ${circle.currentMonth}` : 'Pending launch'}
+          </span>
+          {canJoinDirect ? (
+            <Button onClick={handleJoin} disabled={joining}>
+              {joining ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              Join circle
+            </Button>
+          ) : null}
+          {canRequestJoin ? (
+            <Button onClick={handleOpenRequestDialog} disabled={requestingJoin}>
+              <Send className="h-4 w-4" />
+              Request access
+            </Button>
+          ) : null}
+          {canContribute ? (
+            <Button variant="outline" onClick={handleContribute} disabled={contributing}>
+              {contributing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              Contribute {formatAmount(circle.monthlyAmount)}
+            </Button>
+          ) : null}
+          {canStart ? (
+            <Button variant="outline" onClick={handleStart} disabled={starting}>
+              {starting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              Start circle
+            </Button>
+          ) : null}
+          {canDistribute ? (
+            <Button variant="outline" onClick={handleDistribute} disabled={distributing}>
+              {distributing ? <Loader2 className="h-4 w-4 animate-spin" /> : <TrendingUp className="h-4 w-4" />}
+              Distribute
+            </Button>
+          ) : null}
+          {canEmergencyWithdraw ? (
+            <Button variant="destructive" onClick={handleEmergencyWithdraw} disabled={withdrawingEmergency}>
+              {withdrawingEmergency ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldAlert className="h-4 w-4" />}
+              Emergency exit
+            </Button>
+          ) : null}
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-3 text-sm">
+          {isMember ? (
+            <div className="rounded-[20px] bg-emerald-500/14 px-4 py-3 text-emerald-300">You are a member of this circle.</div>
+          ) : null}
+          {creatorWaitingForMembers ? (
+            <div className="rounded-[20px] bg-amber-500/14 px-4 py-3 text-amber-300">
+              Waiting for the final {spotsLeft} member slot{spotsLeft === 1 ? '' : 's'}.
+            </div>
+          ) : null}
+          {readyToStart && isCreator ? (
+            <div className="rounded-[20px] bg-[#B5F36B]/14 px-4 py-3 text-foreground">
+              All spots are filled. Start the first round when ready.
+            </div>
+          ) : null}
+          {waitingForCreatorToStart ? (
+            <div className="rounded-[20px] bg-white/8 px-4 py-3 text-muted-foreground">
+              The circle is full and waiting for the creator to start it.
+            </div>
+          ) : null}
+        </div>
+      </section>
+
+      <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
+        <section className="neo-panel p-4 md:p-5">
+          <div className="mb-5 flex items-center justify-between gap-3">
             <div>
-              <p className="text-base text-gray-600">Created by</p>
-              <p className="font-bold text-base">{circle.creator.slice(0, 6)}...{circle.creator.slice(-4)}</p>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                Members
+              </p>
+              <h3 className="font-display text-[1.2rem] font-semibold tracking-[-0.04em] text-foreground">
+                Current roster
+              </h3>
             </div>
-            <div className="ml-6 flex items-center gap-2 px-4 py-2 bg-[#FEFAE0] border-[2px] border-black">
-              <span className="text-base font-bold">{circleTypeLabel}</span>
-            </div>
+            <Users className="h-5 w-5 text-[#7AE7C7]" />
           </div>
 
-          {/* Stats Grid */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
-            {[
-              { icon: Wallet, color: '#4ECDC4', label: 'Monthly', value: formatAmount(circle.monthlyAmount), sub: '' },
-              { icon: Users, color: '#FF6B6B', label: 'Members', value: `${circle.currentMembers}/${circle.maxMembers}`, sub: `${spotsLeft} spots left` },
-              { icon: Lock, color: '#FFE66D', label: 'Collateral', value: formatAmount(collateralAmount), sub: `(${circle.collateralRatio/100}x)` },
-              { icon: TrendingUp, color: '#96CEB4', label: 'Total Pot', value: formatAmount(circle.monthlyAmount * BigInt(circle.maxMembers)), sub: '' },
-            ].map((stat, index) => (
-              <div key={stat.label} className={`animate-fade-in stagger-${index + 3} bg-[#FEFAE0] border-[2px] border-black p-5 text-center`}>
-                <stat.icon className="w-7 h-7 mx-auto mb-2" style={{ color: stat.color }} />
-                <p className="text-xs font-bold text-gray-600 uppercase">{stat.label}</p>
-                <p className="text-2xl font-black mt-1">{stat.value}</p>
-                {stat.sub && <p className="text-sm text-gray-500">{stat.sub}</p>}
+          <div className="space-y-3">
+            {memberPreview.map((member, index) => (
+              <div key={member.address} className="flex items-center justify-between gap-3 rounded-[22px] border border-black/10 bg-black/[0.03] px-4 py-4 dark:border-white/10 dark:bg-white/5">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-black/10 bg-white/72 text-sm font-semibold backdrop-blur-xl dark:border-white/10 dark:bg-white/8">
+                    {index + 1}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-foreground">{formatAddress(member.address)}</p>
+                    <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                      {member.paymentsMade} paid • {member.paymentsLate} late
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-semibold text-foreground">{formatAmount(member.collateralLocked)}</p>
+                  {member.hasReceivedPot ? (
+                    <span className="mt-1 inline-flex rounded-full bg-emerald-500/14 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-300">
+                      Received
+                    </span>
+                  ) : null}
+                </div>
               </div>
             ))}
-          </div>
 
-          {/* Progress Bar */}
-          <div className="mb-10 animate-fade-in stagger-5">
-            <div className="flex justify-between text-base font-bold mb-2">
-              <span>Membership Progress</span>
-              <span>{Math.round(progress)}% Full</span>
-            </div>
-            <div className="neo-progress">
-              <div 
-                className="neo-progress-bar bg-[#4ECDC4]"
-                style={{ width: `${progress}%` }}
+            {memberPreview.length === 0 ? (
+              <div className="rounded-[22px] border border-dashed border-black/10 px-4 py-10 text-center text-sm text-muted-foreground dark:border-white/10">
+                No members yet.
+              </div>
+            ) : null}
+
+            {remainingMembers > 0 ? (
+              <div className="rounded-[20px] bg-white/6 px-4 py-3 text-sm text-muted-foreground">
+                +{remainingMembers} more member{remainingMembers === 1 ? '' : 's'} in the contract roster
+              </div>
+            ) : null}
+          </div>
+        </section>
+
+        <div className="space-y-4">
+          {canManageRequests ? (
+            <section className="neo-panel p-4 md:p-5">
+              <div className="mb-5 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    Approvals
+                  </p>
+                  <h3 className="font-display text-[1.2rem] font-semibold tracking-[-0.04em] text-foreground">
+                    Pending requests
+                  </h3>
+                </div>
+                <div className="neo-chip">{pendingRequests.length}</div>
+              </div>
+
+              <CircleRequestsPanel
+                requests={pendingRequests.slice(0, 3)}
+                actingRequestId={actingRequestId}
+                actingRequestAction={actingRequestAction}
+                onApprove={handleApproveRequest}
+                onReject={handleRejectRequest}
+                showCircleName={false}
+                compact
               />
-            </div>
-          </div>
+            </section>
+          ) : null}
 
-          {/* Action Buttons */}
-          <div className="flex flex-wrap gap-4 animate-fade-in stagger-6">
-            {canJoin && (
-              <Button 
-                onClick={handleJoin}
-                disabled={joining}
-                className="neo-button-primary text-lg px-10 py-7"
-              >
-                {joining ? (
-                  <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Joining...</>
-                ) : (
-                  `Join Circle (Lock ${formatAmount(collateralAmount)})`
-                )}
-              </Button>
-            )}
-            
-            {canContribute && (
-              <Button 
-                onClick={handleContribute}
-                disabled={contributing}
-                className="neo-button-secondary text-lg px-10 py-7"
-              >
-                {contributing ? (
-                  <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Processing...</>
-                ) : (
-                  `Contribute ${formatAmount(circle.monthlyAmount)}`
-                )}
-              </Button>
-            )}
-            
-            {canStart && (
-              <Button 
-                onClick={handleStart}
-                disabled={starting}
-                className="neo-button-accent text-lg px-10 py-7"
-              >
-                {starting ? 'Starting...' : 'Start Circle'}
-              </Button>
-            )}
-            
-            {isMember && (
-              <div className="flex items-center gap-2 px-5 py-3 bg-green-400 border-[3px] border-black">
-                <CheckCircle className="w-6 h-6" />
-                <span className="font-bold text-base">You're a member!</span>
+          <section className="neo-panel p-4 md:p-5">
+            <div className="mb-5 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  Schedule
+                </p>
+                <h3 className="font-display text-[1.2rem] font-semibold tracking-[-0.04em] text-foreground">
+                  Round preview
+                </h3>
               </div>
-            )}
-            
-            {spotsLeft === 0 && !isMember && (
-              <div className="flex items-center gap-2 px-5 py-3 bg-gray-300 border-[3px] border-black">
-                <AlertCircle className="w-6 h-6" />
-                <span className="font-bold text-base">Circle is full</span>
+              <Wallet className="h-5 w-5 text-[#7CC8FF]" />
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              {schedulePreview.map((item) => (
+                <div key={item.month} className="rounded-[22px] border border-black/10 bg-black/[0.03] p-4 dark:border-white/10 dark:bg-white/5">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                    Month {item.month}
+                  </p>
+                  <p className="mt-3 text-lg font-semibold text-foreground">{item.state}</p>
+                </div>
+              ))}
+            </div>
+
+            {circle.maxMembers > schedulePreview.length ? (
+              <p className="mt-4 text-sm text-muted-foreground">
+                +{circle.maxMembers - schedulePreview.length} more rounds in the full rotation
+              </p>
+            ) : null}
+          </section>
+
+          {(canComplete || canEmergencyWithdraw) ? (
+            <section className="neo-panel p-4 md:p-5">
+              <div className="mb-5 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    Recovery
+                  </p>
+                  <h3 className="font-display text-[1.2rem] font-semibold tracking-[-0.04em] text-foreground">
+                    Advanced actions
+                  </h3>
+                </div>
+                <ShieldAlert className="h-5 w-5 text-[#FF6B6B]" />
               </div>
-            )}
-          </div>
+
+              <div className="space-y-3">
+                {canComplete ? (
+                  <div className="rounded-[22px] border border-black/10 bg-black/[0.03] p-4 dark:border-white/10 dark:bg-white/5">
+                    <p className="text-sm font-semibold text-foreground">Complete circle</p>
+                    <p className="mt-1 text-sm text-muted-foreground">Use only if the rotation is fully finished.</p>
+                    <Button variant="outline" onClick={handleComplete} disabled={completing} className="mt-4">
+                      {completing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                      Complete
+                    </Button>
+                  </div>
+                ) : null}
+
+                {canEmergencyWithdraw ? (
+                  <div className="rounded-[22px] border border-rose-500/20 bg-rose-500/10 p-4">
+                    <p className="text-sm font-semibold text-rose-100">Emergency withdrawal</p>
+                    <p className="mt-1 text-sm text-rose-100/75">Exit a failed circle and reclaim collateral.</p>
+                    <Button variant="destructive" onClick={handleEmergencyWithdraw} disabled={withdrawingEmergency} className="mt-4">
+                      {withdrawingEmergency ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                      Withdraw
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
+            </section>
+          ) : null}
         </div>
       </div>
 
-      {/* Tabs Section */}
-      <div className="page-shell py-8 md:py-10">
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-          <Tabs defaultValue="members" className="w-full animate-fade-in">
-            <TabsList className="sticky top-[5.8rem] z-20 mb-8 w-full justify-start rounded-none border-[2px] border-black bg-white p-1 shadow-[0_4px_0px_0px_#1a1a1a]">
-              <TabsTrigger 
-                value="members" 
-                className="rounded-none font-bold text-base data-[state=active]:bg-black data-[state=active]:text-white px-6 py-2.5"
-              >
-                Members ({members.length})
-              </TabsTrigger>
-              <TabsTrigger 
-                value="starkzap"
-                className="rounded-none font-bold text-base data-[state=active]:bg-black data-[state=active]:text-white px-6 py-2.5"
-              >
-                <ArrowRightLeft className="w-5 h-5 mr-1" />
-                StarkZap
-              </TabsTrigger>
-              <TabsTrigger 
-                value="schedule"
-                className="rounded-none font-bold text-base data-[state=active]:bg-black data-[state=active]:text-white px-6 py-2.5"
-              >
-                Schedule
-              </TabsTrigger>
-            </TabsList>
+      <Dialog open={requestDialogOpen} onOpenChange={setRequestDialogOpen}>
+        <DialogContent className="overflow-hidden rounded-[28px] border border-black/10 bg-white/92 p-0 shadow-[0_32px_80px_-38px_rgba(15,23,42,0.48)] backdrop-blur-2xl dark:border-white/10 dark:bg-[#0b0f15] dark:shadow-[0_34px_90px_-40px_rgba(0,0,0,0.92)] sm:max-w-lg">
+          <div className="p-6">
+            <DialogHeader className="text-left">
+              <DialogTitle>Request access</DialogTitle>
+              <DialogDescription className="text-sm leading-6 text-muted-foreground">
+                Add a short note for the circle creator.
+              </DialogDescription>
+            </DialogHeader>
 
-            <TabsContent value="members">
-              <div className="neo-card p-8">
-                <h3 className="text-2xl font-black mb-6">Circle Members</h3>
-                {members.length > 0 ? (
-                  <div className="divide-y-[2px] divide-black">
-                    {members.map((member, index) => (
-                      <div key={member.address} className={`flex items-center gap-4 py-5 animate-fade-in stagger-${Math.min(index + 1, 8)}`}>
-                        <div className="w-12 h-12 bg-[#FEFAE0] border-[3px] border-black flex items-center justify-center font-bold text-lg">
-                          {index + 1}
-                        </div>
-                        <div className="w-14 h-14 bg-gray-200 border-[3px] border-black flex items-center justify-center">
-                          <span className="font-bold text-xl">
-                            {member.address.slice(2, 4)}
-                          </span>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-bold text-base truncate">
-                            {member.address.slice(0, 6)}...{member.address.slice(-4)}
-                          </p>
-                          <p className="text-base text-gray-600">
-                            {member.paymentsMade} payments • {member.paymentsLate} late
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-bold text-base">{formatAmount(member.collateralLocked)}</p>
-                          <p className="text-sm text-gray-600">Collateral locked</p>
-                        </div>
-                        {member.hasReceivedPot && (
-                          <div className="px-3 py-1.5 bg-green-400 border-[2px] border-black">
-                            <span className="text-xs font-bold">Received</span>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-gray-600 text-center py-8 text-lg">No members yet. Be the first to join!</p>
-                )}
-              </div>
-            </TabsContent>
-
-            <TabsContent value="starkzap">
-              <div className="space-y-6">
-                {(canJoin || canContribute) ? (
-                  <CircleFundingStudio
-                    circleAddress={circle.contractAddress}
-                    circleLabel={circle.name}
-                    action={canJoin ? 'join' : 'contribute'}
-                    requiredStrkAmount={canJoin ? collateralAmount : circle.monthlyAmount}
-                  />
-                ) : (
-                  <div className="border-[2px] border-black bg-[#FEFAE0] p-5">
-                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                      <div>
-                        <h3 className="text-2xl font-black">StarkZap Funding Studio</h3>
-                        <p className="mt-1 text-[15px] text-gray-600">
-                          The integrated funding rail unlocks when you can join or contribute. Until then,
-                          you can still use the dedicated swap, DCA, lending, and logs workspaces with the same wallet session.
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap gap-3">
-                        <Link to="/swap">
-                          <Button className="neo-button-primary">
-                            Open Swap
-                          </Button>
-                        </Link>
-                        <Link to="/lending">
-                          <Button variant="outline" className="border-[2px] border-black">
-                            Open Lending
-                          </Button>
-                        </Link>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </TabsContent>
-
-            <TabsContent value="schedule">
-              <div className="neo-card p-8">
-                <h3 className="text-2xl font-black mb-6">Payment Schedule</h3>
-                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {Array.from({ length: circle.maxMembers }, (_, i) => (
-                    <div 
-                      key={i} 
-                      className={`border-[3px] border-black p-5 animate-fade-in stagger-${Math.min(i + 1, 6)} ${
-                        i < circle.currentMonth ? 'bg-green-100' : 'bg-[#FEFAE0]'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="font-black text-lg">Month {i + 1}</span>
-                        {i < circle.currentMonth && (
-                          <CheckCircle className="w-6 h-6 text-green-600" />
-                        )}
-                      </div>
-                      <p className="text-base text-gray-600">
-                        {i < circle.currentMonth 
-                          ? 'Completed' 
-                          : i === circle.currentMonth 
-                            ? 'Current month' 
-                            : 'Upcoming'}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </TabsContent>
-          </Tabs>
-
-          <aside className="neo-sticky-rail space-y-5">
-            <div className="neo-panel p-6">
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <div className="neo-chip bg-[#FFE66D]">Circle Summary</div>
-                <a
-                  href={getVoyagerContractUrl(circle.contractAddress)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-[0.08em] underline underline-offset-4"
-                >
-                  Voyager
-                  <ExternalLink className="h-4 w-4" />
-                </a>
+            <div className="mt-5 space-y-4">
+              <div className="rounded-[22px] border border-black/10 bg-black/[0.03] p-4 dark:border-white/10 dark:bg-white/5">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                  Collateral required
+                </p>
+                <p className="mt-2 text-lg font-semibold text-foreground">{formatAmount(collateralAmount)}</p>
               </div>
 
-              <div className="grid gap-3">
-                <div className="border-[2px] border-black bg-[#FEFAE0] p-4">
-                  <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Monthly Contribution</p>
-                  <p className="mt-2 text-3xl font-black">{formatAmount(circle.monthlyAmount)}</p>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="border-[2px] border-black bg-white p-4">
-                    <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Locked Collateral</p>
-                    <p className="mt-2 text-xl font-black">{formatAmount(collateralAmount)}</p>
-                  </div>
-                  <div className="border-[2px] border-black bg-white p-4">
-                    <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Open Spots</p>
-                    <p className="mt-2 text-xl font-black">{spotsLeft}</p>
-                  </div>
-                </div>
+              <div>
+                <Label htmlFor="request-message" className="mb-2 block text-sm font-semibold">Message</Label>
+                <Textarea
+                  id="request-message"
+                  value={requestMessage}
+                  onChange={(event) => setRequestMessage(event.target.value)}
+                  placeholder="I’d like to join this circle."
+                  className="min-h-[120px]"
+                />
               </div>
 
-              <div className="mt-5">
-                <div className="mb-2 flex items-center justify-between text-sm font-black">
-                  <span>Membership Fill</span>
-                  <span>{Math.round(progress)}%</span>
-                </div>
-                <div className="neo-progress">
-                  <div className="neo-progress-bar bg-[#4ECDC4]" style={{ width: `${progress}%` }} />
-                </div>
-              </div>
-
-              <div className="mt-5 space-y-3">
-                {canJoin && (
-                  <Button onClick={handleJoin} disabled={joining} className="neo-button-primary w-full justify-center">
-                    {joining ? <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Joining...</> : 'Join Circle'}
-                  </Button>
-                )}
-                {canContribute && (
-                  <Button onClick={handleContribute} disabled={contributing} className="neo-button-secondary w-full justify-center">
-                    {contributing ? <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Processing...</> : `Contribute ${formatAmount(circle.monthlyAmount)}`}
-                  </Button>
-                )}
-                {canStart && (
-                  <Button onClick={handleStart} disabled={starting} className="neo-button-accent w-full justify-center">
-                    {starting ? 'Starting...' : 'Start Circle'}
-                  </Button>
-                )}
-                <Button type="button" onClick={handleShare} variant="outline" className="w-full border-[2px] border-black">
-                  <Share2 className="mr-2 h-4 w-4" />
-                  Share Circle
+              <div className="flex flex-wrap gap-3">
+                <Button variant="outline" onClick={() => setRequestDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleSubmitJoinRequest} disabled={requestingJoin}>
+                  {requestingJoin ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  Send request
                 </Button>
               </div>
             </div>
-
-            <div className="neo-panel p-6">
-              <h3 className="text-xl font-black">Fund This Position</h3>
-              <p className="mt-2 text-sm leading-relaxed text-black/65">
-                Use the same wallet session to route into STRK, automate a buy schedule, or keep idle balance productive while this circle fills.
-              </p>
-              <div className="mt-5 space-y-3">
-                <Link to="/swap" className="block border-[2px] border-black bg-[#4ECDC4] px-4 py-3 font-black">
-                  Open Swap
-                </Link>
-                <Link to="/dca" className="block border-[2px] border-black bg-[#FFE66D] px-4 py-3 font-black">
-                  Open DCA
-                </Link>
-                <Link to="/lending" className="block border-[2px] border-black bg-[#96CEB4] px-4 py-3 font-black">
-                  Open Lending
-                </Link>
-                <Link to="/logs" className="block border-[2px] border-black bg-white px-4 py-3 font-black">
-                  View Logs
-                </Link>
-              </div>
-            </div>
-          </aside>
-        </div>
-      </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

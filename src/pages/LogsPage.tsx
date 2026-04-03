@@ -1,39 +1,27 @@
 import { useMemo, useState } from 'react';
 import {
-  ArrowRightLeft,
   Blocks,
   ExternalLink,
-  FileText,
-  MoveRight,
-  PiggyBank,
   RefreshCcw,
-  Repeat,
   Shield,
   Trophy,
   Users,
-  X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { CopyButton } from '@/components/ui/copy-button';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { formatAddress } from '@/lib/constants';
 import { type OnchainActivityEntry, useOnchainActivityFeed } from '@/hooks/useOnchainActivityFeed';
-import { useStarkZapLogs } from '@/hooks/useStarkZapLogs';
-import { getStarkZapLogAmountText, getStarkZapLogDetails, type StarkZapLogEntry } from '@/lib/starkzapLogs';
 
 const CATEGORY_META = {
-  factory: { color: '#FF6B6B', icon: Blocks, label: 'Factory' },
-  circle: { color: '#4ECDC4', icon: Users, label: 'Circle' },
+  factory: { color: '#FFB457', icon: Blocks, label: 'Factory' },
+  circle: { color: '#7AE7C7', icon: Users, label: 'Circle' },
   reputation: { color: '#FFE66D', icon: Trophy, label: 'Reputation' },
-  collateral: { color: '#96CEB4', icon: Shield, label: 'Collateral' },
-  batch: { color: '#F4A261', icon: Blocks, label: 'Batch' },
-  staking: { color: '#45B7D1', icon: Blocks, label: 'Staking' },
-  swap: { color: '#DDA0DD', icon: ArrowRightLeft, label: 'Swap' },
-  dca: { color: '#FFE66D', icon: Repeat, label: 'DCA' },
-  lending: { color: '#96CEB4', icon: PiggyBank, label: 'Lending' },
+  collateral: { color: '#7CC8FF', icon: Shield, label: 'Collateral' },
 } as const;
 
 type FeedCategory = keyof typeof CATEGORY_META;
+type CategoryFilter = 'all' | FeedCategory;
 
 type LogsFeedEntry = {
   id: string;
@@ -52,32 +40,19 @@ type LogsFeedEntry = {
   summary: string;
   explorerUrl: string;
   blockNumber: number | null;
-  mode: 'contract' | 'wallet';
 };
 
 function getToneClasses(tone: OnchainActivityEntry['tone']) {
   switch (tone) {
     case 'warning':
-      return 'bg-[#FF6B6B] text-white';
+      return 'bg-rose-500/12 text-rose-700 dark:bg-rose-500/14 dark:text-rose-300';
     case 'highlight':
-      return 'bg-[#FFE66D] text-black';
+      return 'bg-amber-500/14 text-amber-800 dark:text-amber-300';
     case 'neutral':
-      return 'bg-white text-black';
+      return 'bg-black/[0.06] text-foreground dark:bg-white/10 dark:text-white';
     default:
-      return 'bg-[#96CEB4] text-black';
+      return 'bg-emerald-500/12 text-emerald-700 dark:bg-emerald-500/14 dark:text-emerald-300';
   }
-}
-
-function getWalletLogTone(status: StarkZapLogEntry['status']): OnchainActivityEntry['tone'] {
-  if (status === 'failed') return 'warning';
-  if (status === 'submitted') return 'neutral';
-  return 'success';
-}
-
-function getWalletLogEventLabel(status: StarkZapLogEntry['status']) {
-  if (status === 'failed') return 'Failed';
-  if (status === 'submitted') return 'Submitted';
-  return 'Confirmed';
 }
 
 function mapContractEntry(entry: OnchainActivityEntry): LogsFeedEntry {
@@ -98,460 +73,297 @@ function mapContractEntry(entry: OnchainActivityEntry): LogsFeedEntry {
     summary: entry.summary,
     explorerUrl: entry.explorerUrl,
     blockNumber: entry.blockNumber,
-    mode: 'contract',
   };
-}
-
-function mapWalletLog(entry: StarkZapLogEntry): LogsFeedEntry {
-  const details = getStarkZapLogDetails(entry);
-  const valueText = getStarkZapLogAmountText(entry) || entry.summary;
-  const valueDetail = entry.kind === 'swap' && details?.outputAmount && details?.outputToken
-    ? `${details.outputAmount} ${details.outputToken} received`
-    : entry.kind === 'batch' && details?.transferCount
-      ? `${details.transferCount} transfers across ${details.batchTransfers?.length || 1} token group${(details.batchTransfers?.length || 1) === 1 ? '' : 's'}`
-    : entry.kind === 'dca' && details?.outputToken
-      ? `Buying ${details.outputToken}`
-      : null;
-
-  return {
-    id: `wallet:${entry.id}`,
-    category: entry.kind,
-    title: entry.title,
-    valueText,
-    valueDetail,
-    eventLabel: getWalletLogEventLabel(entry.status),
-    tone: getWalletLogTone(entry.status),
-    updatedLabel: new Date(entry.updatedAt).toLocaleString(),
-    updatedAtSort: new Date(entry.updatedAt).getTime(),
-    actor: entry.account,
-    sourceLabel: entry.provider ? entry.provider.toUpperCase() : 'StarkZap',
-    sourceAddress: null,
-    sourceUrl: null,
-    summary: entry.summary,
-    explorerUrl: entry.explorerUrl,
-    blockNumber: null,
-    mode: 'wallet',
-  };
-}
-
-function addTokenAmount(bucket: Map<string, number>, amountText?: string | null) {
-  if (!amountText) return;
-
-  const match = amountText.trim().match(/^(-?\d+(?:\.\d+)?)\s+([A-Z0-9]+)$/i);
-  if (!match) return;
-
-  const amount = Number.parseFloat(match[1]);
-  const token = match[2].toUpperCase();
-
-  if (!Number.isFinite(amount)) return;
-
-  bucket.set(token, (bucket.get(token) || 0) + amount);
-}
-
-function formatTokenTotals(bucket: Map<string, number>) {
-  const items = [...bucket.entries()]
-    .filter(([, amount]) => Number.isFinite(amount) && amount !== 0)
-    .sort((left, right) => right[1] - left[1]);
-
-  if (items.length === 0) {
-    return '0';
-  }
-
-  return items
-    .map(([token, amount]) => `${amount.toLocaleString(undefined, { maximumFractionDigits: amount >= 100 ? 2 : 4 })} ${token}`)
-    .join(' • ');
 }
 
 export function LogsPage() {
-  const { entries, error, hasConfiguredContracts, isLoading, lastUpdatedAt, refresh } = useOnchainActivityFeed();
-  const { logs } = useStarkZapLogs();
+  const {
+    entries,
+    error,
+    hasConfiguredContracts,
+    isLoading,
+    lastUpdatedAt,
+    refresh,
+    refreshIntervalMs,
+  } = useOnchainActivityFeed();
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all');
   const [selectedEntry, setSelectedEntry] = useState<LogsFeedEntry | null>(null);
+  const [manualRefreshing, setManualRefreshing] = useState(false);
 
-  const nonFailedWalletLogs = useMemo(
-    () => logs.filter((entry) => entry.status !== 'failed'),
-    [logs],
+  const feedEntries = useMemo(
+    () => entries.map(mapContractEntry).sort((left, right) => right.updatedAtSort - left.updatedAtSort),
+    [entries],
   );
 
-  const feedEntries = useMemo(() => {
-    const contractEntries = entries.map(mapContractEntry);
-    const walletEntries = logs.map(mapWalletLog);
+  const filteredEntries = useMemo(() => {
+    if (categoryFilter === 'all') {
+      return feedEntries;
+    }
 
-    return [...walletEntries, ...contractEntries].sort((left, right) => right.updatedAtSort - left.updatedAtSort);
-  }, [entries, logs]);
+    return feedEntries.filter((entry) => entry.category === categoryFilter);
+  }, [feedEntries, categoryFilter]);
 
-  const counts = useMemo(() => ({
-    total: feedEntries.length,
-    circle: feedEntries.filter((entry) => entry.category === 'factory' || entry.category === 'circle').length,
-    reputation: feedEntries.filter((entry) => entry.category === 'reputation').length,
-    batch: feedEntries.filter((entry) => entry.category === 'batch').length,
-    swap: feedEntries.filter((entry) => entry.category === 'swap').length,
-    dca: feedEntries.filter((entry) => entry.category === 'dca').length,
-    lending: feedEntries.filter((entry) => entry.category === 'lending').length,
-  }), [feedEntries]);
-
-  const totals = useMemo(() => {
-    const circleContributions = new Map<string, number>();
-    const collateralLocked = new Map<string, number>();
-    const batchVolume = new Map<string, number>();
-    const swapVolume = new Map<string, number>();
-    const dcaBudget = new Map<string, number>();
-    const lendingVolume = new Map<string, number>();
-
-    entries.forEach((entry) => {
-      if (entry.eventName === 'ContributionMade') {
-        addTokenAmount(circleContributions, entry.valueText);
-      }
-
-      if (entry.category === 'collateral' && entry.eventName === 'CollateralLocked') {
-        addTokenAmount(collateralLocked, entry.valueText);
-      }
-    });
-
-    nonFailedWalletLogs.forEach((entry) => {
-      const details = getStarkZapLogDetails(entry);
-
-      if (entry.kind === 'swap') {
-        addTokenAmount(swapVolume, details?.inputAmount && details?.inputToken ? `${details.inputAmount} ${details.inputToken}` : null);
-      }
-
-      if (entry.kind === 'batch') {
-        if (details?.batchTransfers && details.batchTransfers.length > 0) {
-          details.batchTransfers.forEach((item) => {
-            addTokenAmount(batchVolume, `${item.totalAmount} ${item.token}`);
-          });
-        } else {
-          addTokenAmount(batchVolume, details?.totalAmount && details?.totalToken ? `${details.totalAmount} ${details.totalToken}` : null);
-        }
-      }
-
-      if (entry.kind === 'dca') {
-        addTokenAmount(dcaBudget, details?.totalAmount && details?.totalToken ? `${details.totalAmount} ${details.totalToken}` : null);
-      }
-
-      if (entry.kind === 'lending') {
-        addTokenAmount(lendingVolume, details?.inputAmount && details?.inputToken ? `${details.inputAmount} ${details.inputToken}` : null);
-      }
-    });
-
-    return {
-      circleContributions: formatTokenTotals(circleContributions),
-      collateralLocked: formatTokenTotals(collateralLocked),
-      batchVolume: formatTokenTotals(batchVolume),
-      swapVolume: formatTokenTotals(swapVolume),
-      dcaBudget: formatTokenTotals(dcaBudget),
-      lendingVolume: formatTokenTotals(lendingVolume),
-    };
-  }, [entries, nonFailedWalletLogs]);
-
+  const visibleEntries = filteredEntries.slice(0, 12);
   const selectedMeta = selectedEntry ? CATEGORY_META[selectedEntry.category] : null;
   const SelectedIcon = selectedMeta?.icon;
-  const showTable = feedEntries.length > 0 || isLoading;
-  const showEmpty = !isLoading && feedEntries.length === 0;
+  const refreshIntervalSeconds = Math.round(refreshIntervalMs / 1000);
+
+  const stats = useMemo(() => ({
+    total: feedEntries.length,
+    circles: feedEntries.filter((entry) => entry.category === 'circle').length,
+    factory: feedEntries.filter((entry) => entry.category === 'factory').length,
+    reputation: feedEntries.filter((entry) => entry.category === 'reputation').length,
+    collateral: feedEntries.filter((entry) => entry.category === 'collateral').length,
+  }), [feedEntries]);
+
+  const handleRefresh = async () => {
+    try {
+      setManualRefreshing(true);
+      await refresh();
+    } finally {
+      setManualRefreshing(false);
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-[#FEFAE0]">
-      <div className="content-divider-bottom border-b-[2px] border-black bg-white">
-        <div className="page-shell py-8 md:py-9">
-          <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
-            <div>
-              <div className="mb-3 inline-flex items-center gap-2 border-[2px] border-black bg-[#DDA0DD] px-3 py-1.5 text-sm font-black uppercase tracking-[0.08em]">
-                <FileText className="h-4 w-4" />
-                Unified Activity Feed
-              </div>
-              <h1 className="mb-2 text-4xl font-black md:text-5xl">Logs</h1>
-              <p className="max-w-4xl text-[15px] leading-relaxed text-black/70 md:text-base">
-                One place for badge, circle, collateral, batching, swap, DCA, lending, borrow, repay, and withdraw activity.
-                CircleSave contract events are public, and StarkZap wallet actions saved in this browser are merged into the same feed.
-              </p>
-            </div>
+    <div className="space-y-4 pb-4">
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {[
+          { label: 'Total records', value: stats.total },
+          { label: 'Circle events', value: stats.circles },
+          { label: 'Factory events', value: stats.factory },
+          { label: 'Reputation + collateral', value: stats.reputation + stats.collateral },
+        ].map((item) => (
+          <div key={item.label} className="neo-panel p-4">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              {item.label}
+            </p>
+            <p className="mt-3 font-display text-2xl font-semibold tracking-[-0.04em] text-foreground">
+              {item.value}
+            </p>
+          </div>
+        ))}
+      </section>
 
-            <div className="flex flex-wrap gap-3">
-              {lastUpdatedAt ? (
-                <div className="inline-flex items-center gap-2 border-[2px] border-black bg-[#FEFAE0] px-4 py-2 text-sm font-black">
-                  Synced {new Date(lastUpdatedAt).toLocaleTimeString()}
-                </div>
-              ) : null}
-              <Button variant="outline" onClick={refresh} className="border-[2px] border-black">
-                <RefreshCcw className="h-4 w-4" />
-                Refresh
-              </Button>
+      <section className="neo-panel p-4 md:p-5">
+        <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              Feed
+            </p>
+            <h3 className="font-display text-[1.65rem] font-semibold tracking-[-0.04em] text-foreground">
+              Latest 12 on-chain records
+            </h3>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Shared contract activity fetched live from CircleSave contracts, so every user sees the same feed.
+            </p>
+            <div className="mt-3 rounded-[20px] border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm leading-6 text-amber-900 dark:text-amber-100">
+              Shared records usually appear within about {refreshIntervalSeconds} seconds after confirmation. Swap, lend, batch, and DCA actions are external StarkZap transactions, so they are not part of this shared CircleSave contract feed yet.
             </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {lastUpdatedAt ? (
+              <div className="neo-chip">
+                Synced {new Date(lastUpdatedAt).toLocaleTimeString()}
+              </div>
+            ) : null}
+            <Button variant="outline" size="sm" onClick={() => void handleRefresh()} disabled={manualRefreshing}>
+              <RefreshCcw className={`h-4 w-4 ${manualRefreshing ? 'animate-spin' : ''}`} />
+              {manualRefreshing ? 'Refreshing...' : 'Refresh'}
+            </Button>
+            {([
+              ['all', 'All'],
+              ['circle', 'Circle'],
+              ['factory', 'Factory'],
+              ['reputation', 'Reputation'],
+              ['collateral', 'Collateral'],
+            ] as const).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setCategoryFilter(value)}
+                className={`rounded-full border px-3.5 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] transition ${
+                  categoryFilter === value
+                    ? 'border-[#9ad255]/35 bg-[#B5F36B] text-slate-950'
+                    : 'border-black/10 bg-black/[0.03] text-muted-foreground hover:bg-black/[0.045] dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/8'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
           </div>
         </div>
-      </div>
-
-      <div className="page-shell space-y-6 py-8 md:py-10">
-        <section className="grid gap-4 md:grid-cols-3 xl:grid-cols-7">
-          {[
-            { label: 'Total Records', value: counts.total, color: '#DDA0DD' },
-            { label: 'Circle Events', value: counts.circle, color: '#4ECDC4' },
-            { label: 'Reputation', value: counts.reputation, color: '#FFE66D' },
-            { label: 'Batch Actions', value: counts.batch, color: '#F4A261' },
-            { label: 'Swap Actions', value: counts.swap, color: '#DDA0DD' },
-            { label: 'DCA Orders', value: counts.dca, color: '#FFE66D' },
-            { label: 'Lending Actions', value: counts.lending, color: '#96CEB4' },
-          ].map((item) => (
-            <div key={item.label} className="border-[2px] border-black bg-white p-5">
-              <div className="mb-3 h-2 w-16 border-[2px] border-black" style={{ backgroundColor: item.color }} />
-              <p className="text-sm font-bold uppercase tracking-[0.08em] text-black/60">{item.label}</p>
-              <p className="mt-2 text-3xl font-black">{item.value}</p>
-            </div>
-          ))}
-        </section>
-
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
-          {[
-            { label: 'Circle Contributions', value: totals.circleContributions, color: '#4ECDC4' },
-            { label: 'Collateral Locked', value: totals.collateralLocked, color: '#96CEB4' },
-            { label: 'Batch Volume', value: totals.batchVolume, color: '#F4A261' },
-            { label: 'Swap Volume', value: totals.swapVolume, color: '#DDA0DD' },
-            { label: 'DCA Budgeted', value: totals.dcaBudget, color: '#FFE66D' },
-            { label: 'Lending Volume', value: totals.lendingVolume, color: '#96CEB4' },
-          ].map((item) => (
-            <div key={item.label} className="border-[2px] border-black bg-[#FEFAE0] p-5 min-w-0">
-              <div className="mb-3 h-2 w-16 border-[2px] border-black" style={{ backgroundColor: item.color }} />
-              <p className="text-sm font-bold uppercase tracking-[0.08em] text-black/60">{item.label}</p>
-              <p className="text-wrap-safe mt-2 text-xl font-black">{item.value}</p>
-            </div>
-          ))}
-        </section>
 
         {error ? (
-          <section className="neo-card p-8">
-            <h2 className="text-2xl font-black">Contract feed is delayed right now</h2>
-            <p className="mt-3 max-w-2xl text-[15px] leading-relaxed text-black/70">
-              {error} Any StarkZap wallet actions already saved in this browser can still appear below.
-            </p>
-            <Button onClick={refresh} className="mt-5 neo-button-primary">
-              <RefreshCcw className="h-4 w-4" />
-              Try Again
-            </Button>
-          </section>
-        ) : null}
-
-        {!hasConfiguredContracts && logs.length === 0 ? (
-          <div className="neo-card p-12 text-center">
-            <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center border-[3px] border-black bg-[#FEFAE0]">
-              <FileText className="h-9 w-9" />
-            </div>
-            <h2 className="mb-3 text-3xl font-black">No Activity Sources Yet</h2>
-            <p className="mx-auto max-w-2xl text-[15px] leading-relaxed text-black/70">
-              Add the deployed CircleSave contract addresses or submit batch, swap, DCA, and lending actions from this browser to start populating the unified logs feed.
-            </p>
+          <div className="mb-4 rounded-[22px] border border-rose-500/20 bg-rose-500/10 px-4 py-4 text-sm text-rose-700 dark:text-rose-100">
+            {error}
           </div>
         ) : null}
 
-        {showTable ? (
-          <section className="neo-card overflow-hidden p-0">
-            <div className="overflow-x-auto">
-              <Table className="min-w-[820px]">
-                <TableHeader className="bg-black [&_tr]:border-black">
-                  <TableRow className="border-black hover:bg-black">
-                    <TableHead className="px-4 py-4 text-xs font-black uppercase tracking-[0.08em] text-white">Event</TableHead>
-                    <TableHead className="px-4 py-4 text-xs font-black uppercase tracking-[0.08em] text-white">Value</TableHead>
-                    <TableHead className="px-4 py-4 text-xs font-black uppercase tracking-[0.08em] text-white">Type</TableHead>
-                    <TableHead className="px-4 py-4 text-xs font-black uppercase tracking-[0.08em] text-white">Source</TableHead>
-                    <TableHead className="px-4 py-4 text-xs font-black uppercase tracking-[0.08em] text-white">Updated</TableHead>
-                    <TableHead className="px-4 py-4 text-right text-xs font-black uppercase tracking-[0.08em] text-white">Open</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {isLoading && feedEntries.length === 0 ? (
-                    <TableRow className="border-black bg-white">
-                      <TableCell colSpan={6} className="px-4 py-10 text-center text-sm font-bold text-black/65">
-                        Loading unified activity feed...
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    feedEntries.map((entry) => {
-                      const meta = CATEGORY_META[entry.category];
-                      const Icon = meta.icon;
-
-                      return (
-                        <TableRow
-                          key={entry.id}
-                          tabIndex={0}
-                          role="button"
-                          onClick={() => setSelectedEntry(entry)}
-                          onKeyDown={(event) => {
-                            if (event.key === 'Enter' || event.key === ' ') {
-                              event.preventDefault();
-                              setSelectedEntry(entry);
-                            }
-                          }}
-                          className="cursor-pointer border-black bg-white transition-colors hover:bg-[#FEFAE0] focus-visible:bg-[#FEFAE0] focus-visible:outline-none"
-                        >
-                          <TableCell className="px-4 py-4 align-top">
-                            <div className="flex items-center gap-3">
-                              <div
-                                className="flex h-10 w-10 items-center justify-center border-[2px] border-black"
-                                style={{ backgroundColor: meta.color }}
-                              >
-                                <Icon className="h-4 w-4 text-black" />
-                              </div>
-                              <div>
-                                <p className="font-black">{entry.title}</p>
-                                <p className="text-xs uppercase tracking-[0.08em] text-black/50">
-                                  {meta.label} • {entry.actor ? formatAddress(entry.actor) : 'Protocol'}
-                                </p>
-                              </div>
-                            </div>
-                          </TableCell>
-                          <TableCell className="px-4 py-4 align-top text-sm font-black text-black/80">
-                            {entry.valueText || 'Protocol event'}
-                          </TableCell>
-                          <TableCell className="px-4 py-4 align-top">
-                            <span className={`inline-flex border-[2px] border-black px-3 py-1 text-xs font-black uppercase tracking-[0.08em] ${getToneClasses(entry.tone)}`}>
-                              {entry.eventLabel}
-                            </span>
-                          </TableCell>
-                          <TableCell className="px-4 py-4 align-top text-sm font-bold text-black/65">
-                            {entry.sourceLabel}
-                          </TableCell>
-                          <TableCell className="px-4 py-4 align-top text-sm text-black/65">
-                            {entry.updatedLabel}
-                          </TableCell>
-                          <TableCell className="px-4 py-4 align-top text-right">
-                            <span className="inline-flex items-center gap-2 text-sm font-black text-black/70">
-                              Details
-                              <MoveRight className="h-4 w-4" />
-                            </span>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </section>
-        ) : null}
-
-        {showEmpty ? (
-          <div className="neo-card p-12 text-center">
-            <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center border-[3px] border-black bg-[#FEFAE0]">
-              <FileText className="h-9 w-9" />
-            </div>
-            <h2 className="mb-3 text-3xl font-black">No Activity Yet</h2>
-            <p className="mx-auto max-w-2xl text-[15px] leading-relaxed text-black/70">
-              Once badge, circle, batch, swap, DCA, lending, or collateral actions are available, they will appear here in one unified feed.
-            </p>
+        {!hasConfiguredContracts ? (
+          <div className="rounded-[24px] border border-dashed border-black/10 px-4 py-12 text-center text-sm text-muted-foreground dark:border-white/10">
+            No contract activity sources are configured yet.
           </div>
-        ) : null}
-      </div>
+        ) : isLoading && feedEntries.length === 0 ? (
+          <div className="rounded-[24px] border border-dashed border-black/10 px-4 py-12 text-center text-sm text-muted-foreground dark:border-white/10">
+            Loading activity feed...
+          </div>
+        ) : visibleEntries.length === 0 ? (
+          <div className="rounded-[24px] border border-dashed border-black/10 px-4 py-12 text-center text-sm text-muted-foreground dark:border-white/10">
+            No records match the current view.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {visibleEntries.map((entry) => {
+              const meta = CATEGORY_META[entry.category];
+              const Icon = meta.icon;
 
-      <Dialog open={!!selectedEntry} onOpenChange={(open) => !open && setSelectedEntry(null)}>
-        <DialogContent
-          showCloseButton={false}
-          className="max-h-[85svh] w-[calc(100vw-1rem)] max-w-2xl overflow-y-auto border-[3px] border-black bg-white p-0 shadow-[8px_8px_0px_0px_#1a1a1a]"
-        >
-          {selectedEntry && selectedMeta && SelectedIcon ? (
-            <div className="p-6 md:p-7">
-              <div className="mb-5 flex items-center justify-end">
-                <DialogClose asChild>
-                  <button
-                    type="button"
-                    className="inline-flex h-10 w-10 items-center justify-center border-[2px] border-black bg-white shadow-[2px_2px_0px_0px_#1a1a1a] transition-all hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-[3px_3px_0px_0px_#1a1a1a]"
-                    aria-label="Close log details"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </DialogClose>
-              </div>
-
-              <DialogHeader className="border-b-[2px] border-black pb-5 text-left">
-                <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                  <div className="flex items-start gap-4">
+              return (
+                <button
+                  key={entry.id}
+                  type="button"
+                  onClick={() => setSelectedEntry(entry)}
+                  className="flex w-full items-center justify-between gap-4 rounded-[22px] border border-black/10 bg-black/[0.03] px-4 py-4 text-left transition duration-200 hover:-translate-y-0.5 hover:bg-black/[0.045] dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/8"
+                >
+                  <div className="flex min-w-0 items-center gap-3">
                     <div
-                      className="flex h-12 w-12 shrink-0 items-center justify-center border-[2px] border-black"
-                      style={{ backgroundColor: selectedMeta.color }}
+                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-black/10 dark:border-white/10"
+                      style={{ backgroundColor: `${meta.color}24`, color: meta.color }}
                     >
-                      <SelectedIcon className="h-5 w-5 text-black" />
+                      <Icon className="h-4.5 w-4.5" />
                     </div>
-                    <div>
-                      <DialogTitle>{selectedEntry.title}</DialogTitle>
-                      <DialogDescription className="mt-2 text-sm leading-relaxed text-black/65">
-                        {selectedMeta.label} {selectedEntry.mode === 'wallet' ? 'wallet action' : 'contract event'}
-                        {selectedEntry.actor ? ` for ${formatAddress(selectedEntry.actor)}` : ''}.
-                      </DialogDescription>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="truncate text-sm font-semibold text-foreground">{entry.title}</p>
+                        <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${getToneClasses(entry.tone)}`}>
+                          {entry.eventLabel}
+                        </span>
+                      </div>
+                      <p className="truncate text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                        {meta.label} • {entry.actor ? formatAddress(entry.actor) : entry.sourceLabel}
+                      </p>
                     </div>
                   </div>
 
-                  <span className={`inline-flex w-fit border-[2px] border-black px-3 py-1 text-xs font-black uppercase tracking-[0.08em] ${getToneClasses(selectedEntry.tone)}`}>
+                  <div className="hidden min-w-0 text-right md:block">
+                    <p className="truncate text-sm font-semibold text-foreground">
+                      {entry.valueText || 'Protocol event'}
+                    </p>
+                    <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{entry.updatedLabel}</p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      <Dialog open={!!selectedEntry} onOpenChange={(open) => !open && setSelectedEntry(null)}>
+        <DialogContent className="max-h-[85svh] overflow-y-auto border border-black/10 bg-white/92 p-0 shadow-[0_32px_80px_-38px_rgba(15,23,42,0.48)] backdrop-blur-2xl dark:border-white/10 dark:bg-[#0b0f15] dark:shadow-[0_34px_90px_-40px_rgba(0,0,0,0.92)] sm:max-w-2xl">
+          {selectedEntry && selectedMeta && SelectedIcon ? (
+            <div className="p-6">
+              <DialogHeader className="border-b border-black/10 pb-5 text-left dark:border-white/10">
+                <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                  <div className="flex items-start gap-4">
+                    <div
+                      className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-black/10 dark:border-white/10"
+                      style={{ backgroundColor: `${selectedMeta.color}22`, color: selectedMeta.color }}
+                    >
+                      <SelectedIcon className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <DialogTitle>{selectedEntry.title}</DialogTitle>
+                      <DialogDescription className="mt-2 text-sm leading-6 text-muted-foreground">
+                        {selectedMeta.label} contract event
+                      </DialogDescription>
+                    </div>
+                  </div>
+                  <span className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] ${getToneClasses(selectedEntry.tone)}`}>
                     {selectedEntry.eventLabel}
                   </span>
                 </div>
               </DialogHeader>
 
-              <div className="mt-6 grid gap-4 md:grid-cols-2">
-                <div className="border-[2px] border-black bg-[#FEFAE0] p-4">
-                  <p className="text-xs font-black uppercase tracking-[0.08em] text-black/50">Value</p>
-                  <p className="text-wrap-safe mt-2 text-2xl font-black">
+              <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-[22px] border border-black/10 bg-black/[0.03] p-4 dark:border-white/10 dark:bg-white/5">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                    Value
+                  </p>
+                  <p className="mt-3 text-lg font-semibold text-foreground">
                     {selectedEntry.valueText || 'Protocol event'}
                   </p>
                   {selectedEntry.valueDetail ? (
-                    <p className="mt-2 text-sm text-black/60">{selectedEntry.valueDetail}</p>
+                    <p className="mt-2 text-sm text-muted-foreground">{selectedEntry.valueDetail}</p>
                   ) : null}
                 </div>
-
-                <div className="border-[2px] border-black bg-[#FEFAE0] p-4">
-                  <p className="text-xs font-black uppercase tracking-[0.08em] text-black/50">Updated</p>
-                  <p className="mt-2 text-lg font-black">{selectedEntry.updatedLabel}</p>
-                  {selectedEntry.blockNumber !== null ? (
-                    <p className="mt-2 text-sm text-black/60">Block #{selectedEntry.blockNumber}</p>
-                  ) : null}
-                </div>
-
-                <div className="border-[2px] border-black bg-white p-4">
-                  <p className="text-xs font-black uppercase tracking-[0.08em] text-black/50">Actor</p>
-                  <p className="text-wrap-safe mt-2 font-mono text-sm text-black/75">
-                    {selectedEntry.actor || 'Protocol'}
+                <div className="rounded-[22px] border border-black/10 bg-black/[0.03] p-4 dark:border-white/10 dark:bg-white/5">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                    Updated
                   </p>
+                  <p className="mt-3 text-lg font-semibold text-foreground">{selectedEntry.updatedLabel}</p>
+                  {selectedEntry.blockNumber !== null ? (
+                    <p className="mt-2 text-sm text-muted-foreground">Block #{selectedEntry.blockNumber}</p>
+                  ) : null}
                 </div>
-
-                <div className="border-[2px] border-black bg-white p-4">
-                  <p className="text-xs font-black uppercase tracking-[0.08em] text-black/50">Source</p>
+                <div className="rounded-[22px] border border-black/10 bg-black/[0.03] p-4 dark:border-white/10 dark:bg-white/5">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                    Actor
+                  </p>
+                  <div className="mt-3 flex items-center justify-between gap-3">
+                    <p className="truncate text-sm font-semibold text-foreground">
+                      {selectedEntry.actor ? formatAddress(selectedEntry.actor) : 'Protocol'}
+                    </p>
+                    {selectedEntry.actor ? (
+                      <CopyButton value={selectedEntry.actor} successMessage="Address copied" />
+                    ) : null}
+                  </div>
+                </div>
+                <div className="rounded-[22px] border border-black/10 bg-black/[0.03] p-4 dark:border-white/10 dark:bg-white/5">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                    Source
+                  </p>
                   {selectedEntry.sourceUrl ? (
                     <a
                       href={selectedEntry.sourceUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="mt-2 inline-flex items-center gap-2 text-sm font-black underline underline-offset-4"
+                      className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-foreground"
                     >
                       {selectedEntry.sourceLabel}
                       <ExternalLink className="h-4 w-4" />
                     </a>
                   ) : (
-                    <p className="mt-2 text-lg font-black">{selectedEntry.sourceLabel}</p>
+                    <p className="mt-3 text-sm font-semibold text-foreground">{selectedEntry.sourceLabel}</p>
                   )}
                   {selectedEntry.sourceAddress ? (
-                    <p className="text-wrap-safe mt-2 font-mono text-xs text-black/60">{selectedEntry.sourceAddress}</p>
+                    <div className="mt-2 flex items-center justify-between gap-3">
+                      <p className="truncate text-xs text-muted-foreground">{formatAddress(selectedEntry.sourceAddress)}</p>
+                      <CopyButton value={selectedEntry.sourceAddress} successMessage="Address copied" />
+                    </div>
                   ) : null}
                 </div>
               </div>
 
-              <div className="mt-4 border-[2px] border-black bg-white p-4">
-                <p className="text-xs font-black uppercase tracking-[0.08em] text-black/50">Summary</p>
-                <p className="mt-3 text-[15px] leading-relaxed text-black/80">{selectedEntry.summary}</p>
+              <div className="mt-4 rounded-[22px] border border-black/10 bg-black/[0.03] p-4 dark:border-white/10 dark:bg-white/5">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                  Summary
+                </p>
+                <p className="mt-3 text-sm leading-6 text-foreground">{selectedEntry.summary}</p>
               </div>
 
-              <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-between">
-                <a
-                  href={selectedEntry.explorerUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center justify-center gap-2 border-[2px] border-black bg-[#FEFAE0] px-4 py-3 text-sm font-black uppercase tracking-[0.08em] shadow-[3px_3px_0px_0px_#1a1a1a] transition-transform hover:-translate-y-0.5"
-                >
-                  Open on Voyager
-                  <ExternalLink className="h-4 w-4" />
-                </a>
-
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="border-[2px] border-black"
-                  onClick={() => setSelectedEntry(null)}
-                >
+              <div className="mt-5 flex flex-wrap gap-3">
+                <Button asChild>
+                  <a
+                    href={selectedEntry.explorerUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Open on Voyager
+                    <ExternalLink className="h-4 w-4" />
+                  </a>
+                </Button>
+                <Button variant="secondary" onClick={() => setSelectedEntry(null)}>
                   Close
                 </Button>
               </div>

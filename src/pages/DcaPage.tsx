@@ -4,12 +4,20 @@ import {
   CalendarClock,
   ExternalLink,
   FileText,
+  Info,
   Repeat,
-  Sparkles,
   Wallet,
-  Zap,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { CopyButton } from '@/components/ui/copy-button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -20,20 +28,22 @@ import {
 } from '@/components/ui/select';
 import {
   type StarkZapDcaFrequency,
-  type StarkZapDcaProviderId,
   type StarkZapDcaPreview,
+  type StarkZapDcaProviderId,
   type StarkZapExecutionMode,
   type StarkZapOrderView,
   type StarkZapTokenKey,
   useStarkZapActions,
 } from '@/hooks/useStarkZapActions';
+import { useStarkZapModuleStats } from '@/hooks/useStarkZapModuleStats';
 import { useWallet } from '@/hooks/useWallet';
+import { formatAddress } from '@/lib/constants';
 
 const TOKEN_OPTIONS: StarkZapTokenKey[] = ['ETH', 'USDC', 'STRK'];
-const DCA_FREQUENCIES: Array<{ value: StarkZapDcaFrequency; label: string; helper: string }> = [
-  { value: 'PT12H', label: 'Every 12 Hours', helper: 'Fastest test cadence on Sepolia.' },
-  { value: 'P1D', label: 'Daily', helper: 'Best default for routine funding.' },
-  { value: 'P1W', label: 'Weekly', helper: 'Low-touch recurring accumulation.' },
+const DCA_FREQUENCIES: Array<{ value: StarkZapDcaFrequency; label: string }> = [
+  { value: 'PT12H', label: 'Every 12 Hours' },
+  { value: 'P1D', label: 'Daily' },
+  { value: 'P1W', label: 'Weekly' },
 ];
 const DCA_TEMPLATES: Array<{
   title: string;
@@ -43,12 +53,24 @@ const DCA_TEMPLATES: Array<{
   sellAmountPerCycle: string;
   frequency: StarkZapDcaFrequency;
   providerId: StarkZapDcaProviderId;
-  color: string;
 }> = [
-  { title: 'Starter STRK Build', sellToken: 'STRK', buyToken: 'ETH', sellAmount: '5', sellAmountPerCycle: '1', frequency: 'P1D', providerId: 'avnu', color: '#FFE66D' },
-  { title: 'Weekly STRK Funding', sellToken: 'USDC', buyToken: 'STRK', sellAmount: '10', sellAmountPerCycle: '2', frequency: 'P1W', providerId: 'ekubo', color: '#4ECDC4' },
-  { title: 'ETH To STRK Drip', sellToken: 'ETH', buyToken: 'STRK', sellAmount: '1', sellAmountPerCycle: '0.25', frequency: 'P1D', providerId: 'avnu', color: '#FF6B6B' },
-] as const;
+  { title: 'USDC to STRK', sellToken: 'USDC', buyToken: 'STRK', sellAmount: '10', sellAmountPerCycle: '2', frequency: 'P1W', providerId: 'ekubo' },
+  { title: 'ETH to STRK', sellToken: 'ETH', buyToken: 'STRK', sellAmount: '1', sellAmountPerCycle: '0.25', frequency: 'P1D', providerId: 'avnu' },
+  { title: 'STRK to ETH', sellToken: 'STRK', buyToken: 'ETH', sellAmount: '5', sellAmountPerCycle: '1', frequency: 'P1D', providerId: 'avnu' },
+];
+
+function getOrderStatusClasses(status: string) {
+  switch (status) {
+    case 'ACTIVE':
+      return 'border border-[#b7f064]/30 bg-[linear-gradient(135deg,rgba(181,243,107,0.92)_0%,rgba(124,200,255,0.72)_100%)] text-slate-950 shadow-[0_14px_30px_-22px_rgba(126,192,86,0.72)]';
+    case 'COMPLETED':
+      return 'border border-sky-400/24 bg-sky-400/18 text-sky-200';
+    case 'CANCELLED':
+      return 'border border-rose-400/24 bg-rose-400/16 text-rose-200';
+    default:
+      return 'border border-white/14 bg-white/9 text-white/84';
+  }
+}
 
 export function DcaPage() {
   const { isConnected, address } = useWallet();
@@ -60,12 +82,12 @@ export function DcaPage() {
     loadDcaOrders,
     previewDca,
   } = useStarkZapActions();
-  const [sellToken, setSellToken] = useState<StarkZapTokenKey>('STRK');
-  const [buyToken, setBuyToken] = useState<StarkZapTokenKey>('ETH');
-  const [sellAmount, setSellAmount] = useState('5');
-  const [sellAmountPerCycle, setSellAmountPerCycle] = useState('1');
-  const [frequency, setFrequency] = useState<StarkZapDcaFrequency>('P1D');
-  const [providerId, setProviderId] = useState<StarkZapDcaProviderId>('avnu');
+  const [sellToken, setSellToken] = useState<StarkZapTokenKey>('USDC');
+  const [buyToken, setBuyToken] = useState<StarkZapTokenKey>('STRK');
+  const [sellAmount, setSellAmount] = useState('10');
+  const [sellAmountPerCycle, setSellAmountPerCycle] = useState('2');
+  const [frequency, setFrequency] = useState<StarkZapDcaFrequency>('P1W');
+  const [providerId, setProviderId] = useState<StarkZapDcaProviderId>('ekubo');
   const [orderFilter, setOrderFilter] = useState<'all' | StarkZapDcaProviderId>('all');
   const [preview, setPreview] = useState<StarkZapDcaPreview | null>(null);
   const [orders, setOrders] = useState<StarkZapOrderView[]>([]);
@@ -74,8 +96,9 @@ export function DcaPage() {
   const [pendingOrderId, setPendingOrderId] = useState<string | null>(null);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const accountInitializing = isConnected && !isWalletReady;
+  const [selectedOrder, setSelectedOrder] = useState<StarkZapOrderView | null>(null);
   const feeMode: StarkZapExecutionMode = 'user_pays';
+  const moduleStats = useStarkZapModuleStats('dca');
 
   const totalCycles = useMemo(() => {
     const total = Number.parseFloat(sellAmount);
@@ -89,7 +112,7 @@ export function DcaPage() {
       setLoadingOrders(true);
       setOrders(await loadDcaOrders({ providerId: nextFilter }));
     } catch {
-      // The hook already surfaces a toast and we preserve the current list.
+      // hook toasts already
     } finally {
       setLoadingOrders(false);
     }
@@ -97,19 +120,7 @@ export function DcaPage() {
 
   useEffect(() => {
     if (!isWalletReady) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        setLoadingOrders(true);
-        const result = await loadDcaOrders({ providerId: orderFilter });
-        if (!cancelled) setOrders(result);
-      } catch {
-        // The hook already surfaces a toast and we preserve the current list.
-      } finally {
-        if (!cancelled) setLoadingOrders(false);
-      }
-    })();
-    return () => { cancelled = true; };
+    void refreshOrders(orderFilter);
   }, [isWalletReady, orderFilter, loadDcaOrders]);
 
   const handlePreview = async () => {
@@ -181,373 +192,441 @@ export function DcaPage() {
 
   if (!isConnected) {
     return (
-      <div className="min-h-screen bg-[#FEFAE0] flex items-center justify-center">
-        <div className="neo-card max-w-xl p-10 text-center">
-          <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center border-[3px] border-black bg-[#FFE66D]">
-            <Wallet className="h-9 w-9" />
+      <div className="space-y-4 pb-4">
+        <section className="neo-panel p-10 text-center">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-[22px] border border-white/10 bg-white/6 text-white">
+            <Wallet className="h-7 w-7" />
           </div>
-          <h2 className="mb-3 text-3xl font-black">Connect Your Wallet</h2>
-          <p className="text-[15px] leading-relaxed text-black/70">
-            DCA uses the same app-wide wallet session. Connect once from the header and use that same account here.
-          </p>
-        </div>
+          <h2 className="font-display text-3xl font-semibold tracking-[-0.05em] text-foreground">
+            Connect to use DCA
+          </h2>
+        </section>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#FEFAE0]">
-      <div className="content-divider-bottom border-b-[2px] border-black bg-white">
-        <div className="page-shell py-8 md:py-10">
-          <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-            <div>
-              <div className="mb-3 inline-flex items-center gap-2 border-[2px] border-black bg-[#FFE66D] px-3 py-1.5 text-sm font-black uppercase tracking-[0.08em]">
-                <Zap className="h-4 w-4" />
-                StarkZap v2 DCA
-              </div>
-              <h1 className="text-4xl font-black md:text-5xl">Recurring Funding Workspace</h1>
-              <p className="mt-3 max-w-3xl text-[15px] leading-relaxed text-black/70 md:text-base">
-                Build AVNU or Ekubo recurring buys, preview each cycle, manage live orders, and cancel stale automation without leaving CircleSave.
-              </p>
-              <div className="mt-4 flex flex-wrap gap-3">
-                <div className="neo-chip bg-white">
+    <div className="space-y-4 pb-4">
+      <div className="grid gap-4 xl:items-start xl:grid-cols-[1.08fr_0.92fr]">
+        <section className="space-y-4">
+          <section className="neo-panel p-4 md:p-5">
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+              <div className="flex flex-wrap gap-2">
+                <div className="neo-chip">
                   <Wallet className="h-4 w-4" />
-                  <span className="text-wrap-safe min-w-0 font-mono normal-case tracking-normal">
-                    {address}
-                  </span>
+                  <span className="text-wrap-safe min-w-0 normal-case tracking-normal">{formatAddress(address || '')}</span>
                 </div>
-                <div className="neo-chip bg-[#FEFAE0]">
-                  <Sparkles className="h-4 w-4" />
-                  Use this to auto-fund future circle contributions
+                <CopyButton value={address || ''} successMessage="Wallet address copied" />
+                <div className="neo-chip">
+                  {totalCycles > 0 ? `${totalCycles} cycles` : 'Set amounts'}
                 </div>
               </div>
-            </div>
-
-            <div className="flex flex-wrap gap-3">
-              <Button variant="outline" onClick={() => void refreshOrders(orderFilter)} disabled={!isWalletReady || loadingOrders} className="border-[2px] border-black">
-                {loadingOrders ? 'Refreshing Orders...' : 'Refresh Orders'}
+              <Button variant="outline" size="sm" asChild className="w-full sm:w-auto">
+                <Link to="/logs">
+                  <FileText className="h-4 w-4" />
+                  Logs
+                </Link>
               </Button>
-              <Link to="/logs">
-                <Button variant="outline" className="border-[2px] border-black">
-                  View Logs
-                </Button>
-              </Link>
             </div>
-          </div>
-        </div>
-      </div>
 
-      <div className="page-shell grid gap-6 py-8 xl:grid-cols-[minmax(0,1fr)_360px] xl:py-10">
-        {accountInitializing && (
-          <div className="xl:col-span-2 border-[2px] border-black bg-[#FFE66D] px-5 py-4 text-sm font-bold leading-relaxed shadow-[3px_3px_0px_0px_#1a1a1a]">
-            Wallet session is finishing setup. DCA previews and order loading will start automatically in a moment.
-          </div>
-        )}
-        <section className="space-y-6">
-          <div className="neo-panel p-6">
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <div>
-                <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Recommended Templates</p>
-                <h2 className="text-2xl font-black">Start From A Working Automation Pattern</h2>
-              </div>
-              <div className="neo-chip bg-white">Provider Aware</div>
+            <div className="mb-4 grid gap-3 sm:grid-cols-3">
+              {[
+                { label: 'Total transactions', value: String(moduleStats.totalTransactions) },
+                { label: 'My transactions', value: String(moduleStats.myTransactions) },
+                { label: 'Transaction amount', value: moduleStats.amountLabel },
+              ].map((item) => (
+                <div key={item.label} className="neo-stat-tile">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    {item.label}
+                  </p>
+                  <p className="mt-2 text-sm font-semibold text-foreground sm:text-base">
+                    {item.value}
+                  </p>
+                </div>
+              ))}
             </div>
-            <div className="grid gap-4 md:grid-cols-3">
+
+            <div className="scrollbar-hidden mb-5 flex gap-2 overflow-x-auto pb-1">
               {DCA_TEMPLATES.map((template) => (
                 <button
                   key={template.title}
                   type="button"
                   onClick={() => applyTemplate(template)}
-                  className={`text-left border-[2px] border-black p-4 transition-all hover:-translate-y-0.5 hover:shadow-[4px_4px_0px_0px_#1a1a1a] ${
-                    template.sellToken === sellToken && template.buyToken === buyToken ? 'bg-white' : 'bg-[#FEFAE0]'
+                  className={`rounded-full border px-3.5 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] transition ${
+                    template.sellToken === sellToken && template.buyToken === buyToken
+                    && template.providerId === providerId && template.frequency === frequency
+                      ? 'border-[#9ad255]/35 bg-[#B5F36B] text-slate-950'
+                      : 'border-black/10 bg-black/[0.03] text-muted-foreground hover:bg-black/[0.045] dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/8'
                   }`}
                 >
-                  <div
-                    className="mb-3 h-3 w-16 border-[2px] border-black"
-                    style={{ backgroundColor: template.color }}
-                  />
-                  <p className="font-black">{template.title}</p>
-                  <p className="mt-2 text-sm text-black/65">{template.sellToken} {'->'} {template.buyToken}</p>
-                  <p className="mt-2 text-sm leading-relaxed text-black/60">
-                    {template.sellAmountPerCycle} per cycle via {template.providerId.toUpperCase()}
-                  </p>
+                  {template.title}
                 </button>
               ))}
             </div>
-          </div>
 
-          <div className="neo-panel p-6 md:p-8">
-            <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div>
-                <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Order Builder</p>
-                <h2 className="text-3xl font-black">Create DCA Order</h2>
+            <div className="space-y-3">
+              <div className="grid gap-3 rounded-[18px] border border-black/10 bg-black/[0.03] p-3.5 dark:border-white/10 dark:bg-white/5 sm:grid-cols-2 xl:grid-cols-3">
+                <div>
+                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Sell token</p>
+                  <Select value={sellToken} onValueChange={(value) => setSellToken(value as StarkZapTokenKey)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TOKEN_OPTIONS.map((token) => (
+                        <SelectItem key={token} value={token}>
+                          {token}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Buy token</p>
+                  <Select value={buyToken} onValueChange={(value) => setBuyToken(value as StarkZapTokenKey)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TOKEN_OPTIONS.map((token) => (
+                        <SelectItem key={token} value={token}>
+                          {token}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Provider</p>
+                  <Select value={providerId} onValueChange={(value) => setProviderId(value as StarkZapDcaProviderId)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {dcaProviderOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-              <div className="neo-chip bg-[#FEFAE0]">
-                <CalendarClock className="h-4 w-4" />
-                {totalCycles > 0 ? `${totalCycles} cycle${totalCycles > 1 ? 's' : ''} estimated` : 'Set amounts to estimate cycles'}
+
+              <div className="grid gap-3 rounded-[18px] border border-black/10 bg-black/[0.03] p-3.5 dark:border-white/10 dark:bg-white/5 sm:grid-cols-2 xl:grid-cols-3">
+                <div>
+                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Total amount</p>
+                  <Input value={sellAmount} onChange={(event) => setSellAmount(event.target.value)} placeholder="10" />
+                </div>
+
+                <div>
+                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Per cycle</p>
+                  <Input value={sellAmountPerCycle} onChange={(event) => setSellAmountPerCycle(event.target.value)} placeholder="2" />
+                </div>
+
+                <div>
+                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Frequency</p>
+                  <Select value={frequency} onValueChange={(value) => setFrequency(value as StarkZapDcaFrequency)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DCA_FREQUENCIES.map((item) => (
+                        <SelectItem key={item.value} value={item.value}>
+                          {item.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              <div>
-                <p className="mb-2 text-sm font-bold">Sell Token</p>
-                <Select value={sellToken} onValueChange={(value) => setSellToken(value as StarkZapTokenKey)}>
-                  <SelectTrigger className="w-full border-[2px] border-black bg-white">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="border-[2px] border-black">
-                    {TOKEN_OPTIONS.map((token) => (
-                      <SelectItem key={token} value={token}>
-                        {token}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className="mt-5 grid gap-3 sm:flex sm:flex-wrap">
+              <Button variant="outline" onClick={handlePreview} disabled={activeAction !== null || !isWalletReady} className="w-full sm:w-auto">
+                {activeAction === 'preview' ? 'Previewing...' : 'Preview'}
+              </Button>
+              <Button
+                onClick={handleCreate}
+                disabled={activeAction !== null || !isWalletReady}
+                className="w-full border-[#9ad255]/35 bg-[linear-gradient(135deg,#B5F36B_0%,#7CC8FF_100%)] text-slate-950 dark:bg-[linear-gradient(135deg,#B5F36B_0%,#7CC8FF_100%)] sm:w-auto"
+              >
+                {activeAction === 'create' ? 'Creating...' : 'Create order'}
+              </Button>
+            </div>
 
-              <div>
-                <p className="mb-2 text-sm font-bold">Buy Token</p>
-                <Select value={buyToken} onValueChange={(value) => setBuyToken(value as StarkZapTokenKey)}>
-                  <SelectTrigger className="w-full border-[2px] border-black bg-white">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="border-[2px] border-black">
-                    {TOKEN_OPTIONS.map((token) => (
-                      <SelectItem key={token} value={token}>
-                        {token}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            {errorMessage ? (
+              <div className="mt-4 rounded-[22px] border border-rose-500/20 bg-rose-500/10 px-4 py-4 text-sm text-rose-100">
+                {errorMessage}
               </div>
+            ) : null}
+          </section>
 
+          <section className="neo-panel p-4 md:p-5">
+            <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <p className="mb-2 text-sm font-bold">Provider</p>
-                <Select value={providerId} onValueChange={(value) => setProviderId(value as StarkZapDcaProviderId)}>
-                  <SelectTrigger className="w-full border-[2px] border-black bg-white">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="border-[2px] border-black">
-                    {dcaProviderOptions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <p className="mb-2 text-sm font-bold">Total Sell Amount</p>
-                <Input
-                  value={sellAmount}
-                  onChange={(event) => setSellAmount(event.target.value)}
-                  className="border-[2px] border-black bg-white"
-                  placeholder="5"
-                />
-              </div>
-
-              <div>
-                <p className="mb-2 text-sm font-bold">Sell Per Cycle</p>
-                <Input
-                  value={sellAmountPerCycle}
-                  onChange={(event) => setSellAmountPerCycle(event.target.value)}
-                  className="border-[2px] border-black bg-white"
-                  placeholder="1"
-                />
-              </div>
-
-              <div>
-                <p className="mb-2 text-sm font-bold">Frequency</p>
-                <Select value={frequency} onValueChange={(value) => setFrequency(value as StarkZapDcaFrequency)}>
-                  <SelectTrigger className="w-full border-[2px] border-black bg-white">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="border-[2px] border-black">
-                    {DCA_FREQUENCIES.map((item) => (
-                      <SelectItem key={item.value} value={item.value}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="mt-2 text-sm text-black/60">
-                  {DCA_FREQUENCIES.find((item) => item.value === frequency)?.helper}
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  Orders
                 </p>
+                <h3 className="font-display text-[1.2rem] font-semibold tracking-[-0.04em] text-foreground">
+                  Existing plans
+                </h3>
               </div>
-
-              <div>
-                <p className="mb-2 text-sm font-bold">Order List Filter</p>
-                <Select value={orderFilter} onValueChange={(value) => setOrderFilter(value as 'all' | StarkZapDcaProviderId)}>
-                  <SelectTrigger className="w-full border-[2px] border-black bg-white">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="border-[2px] border-black">
-                    <SelectItem value="all">All Providers</SelectItem>
-                    {dcaProviderOptions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <Select value={orderFilter} onValueChange={(value) => setOrderFilter(value as 'all' | StarkZapDcaProviderId)}>
+                <SelectTrigger className="w-full sm:w-[10rem]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All providers</SelectItem>
+                  {dcaProviderOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
-            <div className="mt-6 flex flex-wrap gap-3">
-              <Button type="button" onClick={handlePreview} disabled={activeAction !== null || !isWalletReady} className="neo-button-secondary">
-                {activeAction === 'preview' ? 'Loading Preview...' : 'Preview Cycle'}
-              </Button>
-              <Button type="button" onClick={handleCreate} disabled={activeAction !== null || !isWalletReady} className="neo-button-primary">
-                {activeAction === 'create' ? 'Creating Order...' : 'Create DCA Order'}
-              </Button>
-            </div>
-
-            {errorMessage && (
-              <div className="mt-6 border-[2px] border-black bg-[#FF6B6B]/15 p-4">
-                <p className="font-black text-[#8b1e1e]">DCA Error</p>
-                <p className="mt-1 text-[15px] leading-relaxed text-black/75">{errorMessage}</p>
+            {loadingOrders ? (
+              <div className="rounded-[22px] border border-dashed border-black/10 px-4 py-10 text-center text-sm text-muted-foreground dark:border-white/10">
+                Loading orders...
               </div>
-            )}
-          </div>
-
-          <div className="neo-panel p-6 md:p-8">
-            <div className="mb-5 flex items-center justify-between gap-4">
-              <div>
-                <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Existing Orders</p>
-                <h2 className="text-2xl font-black">Your DCA Orders</h2>
-              </div>
-              {loadingOrders && <p className="text-sm text-black/60">Refreshing...</p>}
-            </div>
-            {orders.length > 0 ? (
+            ) : orders.length > 0 ? (
               <div className="space-y-3">
                 {orders.map((order) => (
-                  <div key={order.id} className="grid gap-3 border-[2px] border-black bg-white p-4 md:grid-cols-[1.1fr_0.9fr_0.9fr_auto] md:items-center">
-                    <div>
-                      <p className="font-black">{order.sellToken} {'->'} {order.buyToken}</p>
-                      <p className="mt-1 text-sm text-black/60">{order.frequency} • {order.provider} • {order.createdAt}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Plan</p>
-                      <p className="mt-1 font-black">{order.totalSellAmount}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Progress</p>
-                      <p className="mt-1 font-black">{order.soldAmount} sold • {order.boughtAmount} bought</p>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-3 md:justify-self-end">
-                      <div className="border-[2px] border-black bg-[#FEFAE0] px-3 py-1 text-xs font-black uppercase tracking-[0.08em]">
-                        {order.status}
+                  <div
+                    key={order.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setSelectedOrder(order)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        setSelectedOrder(order);
+                      }
+                    }}
+                    className="flex w-full flex-col gap-3 rounded-[22px] border border-black/10 bg-black/[0.03] px-4 py-4 text-left transition duration-200 hover:-translate-y-0.5 hover:border-[#B5F36B]/18 hover:bg-black/[0.045] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B5F36B]/50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/8 md:flex-row md:items-center md:justify-between"
+                  >
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-black/10 bg-[#A48DFF]/14 text-[#A48DFF] dark:border-white/10">
+                        <Repeat className="h-4.5 w-4.5" />
                       </div>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="border-[2px] border-black"
-                        disabled={activeAction !== null || order.status !== 'ACTIVE' || !isWalletReady}
-                        onClick={() => void handleCancel(order)}
-                      >
-                        {pendingOrderId === order.id ? 'Cancelling...' : 'Cancel'}
-                      </Button>
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="truncate text-sm font-semibold text-foreground">
+                            {order.sellToken} to {order.buyToken}
+                          </p>
+                          <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${getOrderStatusClasses(order.status)}`}>
+                            {order.status}
+                          </span>
+                        </div>
+                        <p className="truncate text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                          {order.provider} • {order.frequency} • {order.createdAt}
+                        </p>
+                        <p className="mt-1 truncate text-xs text-muted-foreground md:hidden">
+                          {order.totalSellAmount} budget • {order.soldAmount} sold • {order.boughtAmount} bought
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex min-w-0 items-center gap-4 md:ml-auto">
+                      <div className="hidden min-w-0 text-right md:block">
+                        <p className="text-sm font-semibold text-foreground">{order.totalSellAmount}</p>
+                        <p className="text-xs text-muted-foreground">Budget</p>
+                      </div>
+                      <div className="hidden min-w-0 text-right lg:block">
+                        <p className="text-sm font-semibold text-foreground">{order.soldAmount} sold</p>
+                        <p className="text-xs text-muted-foreground">{order.boughtAmount} bought</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="icon-sm"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setSelectedOrder(order);
+                          }}
+                          aria-label="View order details"
+                        >
+                          <Info className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={activeAction !== null || order.status !== 'ACTIVE' || !isWalletReady}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void handleCancel(order);
+                          }}
+                        >
+                          {pendingOrderId === order.id ? 'Cancelling...' : 'Cancel'}
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="border-[2px] border-black bg-[#FEFAE0] p-6 text-center">
-                <Repeat className="mx-auto mb-3 h-10 w-10 text-black/25" />
-                <h3 className="text-xl font-black">No DCA orders yet</h3>
-                <p className="mt-2 text-sm leading-relaxed text-black/65">
-                  Create your first recurring order and it will show here with provider, progress, and cancellation controls.
-                </p>
+              <div className="rounded-[22px] border border-dashed border-black/10 px-4 py-10 text-center text-sm text-muted-foreground dark:border-white/10">
+                No DCA orders yet.
               </div>
             )}
-          </div>
+          </section>
         </section>
 
-        <aside className="neo-sticky-rail space-y-5">
-          <div className="neo-panel p-6">
-            <div className="mb-4 flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center border-[2px] border-black bg-[#4ECDC4]">
-                <Repeat className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Order Rail</p>
-                <h2 className="text-2xl font-black">Current Setup</h2>
-              </div>
-            </div>
-            <div className="space-y-3">
-              <div className="border-[2px] border-black bg-[#FEFAE0] p-4">
-                <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Route</p>
-                <p className="mt-2 text-2xl font-black">{sellToken} {'->'} {buyToken}</p>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="border-[2px] border-black bg-white p-4">
-                  <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Total</p>
-                  <p className="mt-2 text-xl font-black">{sellAmount || '0'}</p>
-                </div>
-                <div className="border-[2px] border-black bg-white p-4">
-                  <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Per Cycle</p>
-                  <p className="mt-2 text-xl font-black">{sellAmountPerCycle || '0'}</p>
-                </div>
-              </div>
-              <div className="border-[2px] border-black bg-white p-4">
-                <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Provider + Mode</p>
-                <p className="mt-2 text-xl font-black">
-                  {dcaProviderOptions.find((option) => option.value === providerId)?.label}
-                </p>
-                <p className="mt-1 text-sm text-black/60">Regular Signing</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="neo-panel p-6">
+        <div className="space-y-4">
+          <section className="neo-panel p-5 md:p-6">
             <div className="mb-4 flex items-center justify-between gap-3">
-              <h2 className="text-2xl font-black">Cycle Estimate</h2>
-              {preview && <div className="neo-chip bg-[#FFE66D]">Ready</div>}
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                  Cycle estimate
+                </p>
+                <h3 className="font-display text-[1.65rem] font-semibold tracking-[-0.04em] text-foreground">
+                  Preview
+                </h3>
+              </div>
+              <CalendarClock className="h-5 w-5 text-[#A48DFF]" />
             </div>
+
             {preview ? (
-              <div className="space-y-3 text-[15px]">
-                <div className="border-[2px] border-black bg-[#FEFAE0] p-4">
-                  <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Estimated Buy Per Cycle</p>
-                  <p className="mt-2 text-3xl font-black">{preview.estimatedBuyAmount}</p>
+              <div className="space-y-3">
+                <div className="rounded-[22px] border border-black/10 bg-black/[0.03] p-4 dark:border-white/10 dark:bg-white/5">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                    Estimated buy per cycle
+                  </p>
+                  <p className="mt-3 text-2xl font-semibold text-foreground">{preview.estimatedBuyAmount}</p>
                 </div>
-                <p><span className="font-black">Provider:</span> {preview.provider}</p>
-                <p><span className="font-black">Sell Per Cycle:</span> {preview.sellAmountPerCycle}</p>
-                <p><span className="font-black">Estimated Cycles:</span> {totalCycles || 'Unavailable'}</p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-[22px] border border-black/10 bg-black/[0.03] p-4 dark:border-white/10 dark:bg-white/5">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                      Provider
+                    </p>
+                    <p className="mt-3 text-lg font-semibold text-foreground">{preview.provider}</p>
+                  </div>
+                  <div className="rounded-[22px] border border-black/10 bg-black/[0.03] p-4 dark:border-white/10 dark:bg-white/5">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                      Cycles
+                    </p>
+                    <p className="mt-3 text-lg font-semibold text-foreground">{totalCycles || 'Unavailable'}</p>
+                  </div>
+                </div>
               </div>
             ) : (
-              <p className="text-[15px] leading-relaxed text-black/70">
-                Preview the cycle first to estimate recurring buy output before creating the on-chain order.
-              </p>
+              <div className="rounded-[22px] border border-dashed border-black/10 px-4 py-10 text-center text-sm text-muted-foreground dark:border-white/10">
+                Preview the plan before creating it.
+              </div>
             )}
-          </div>
+          </section>
 
-          <div className="neo-panel p-6">
-            <div className="mb-4 flex items-center gap-3">
-              <FileText className="h-5 w-5" />
-              <h2 className="text-2xl font-black">Last Submitted Transaction</h2>
+          <section className="neo-panel p-5 md:p-6">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                  Last transaction
+                </p>
+                <h3 className="font-display text-[1.65rem] font-semibold tracking-[-0.04em] text-foreground">
+                  Submission
+                </h3>
+              </div>
             </div>
+
             {lastTx ? (
               <div className="space-y-3">
-                <p className="text-wrap-safe font-mono text-sm text-black/60">{lastTx.hash}</p>
+                <p className="text-wrap-safe text-sm text-muted-foreground">{lastTx.hash}</p>
                 <a
                   href={lastTx.explorerUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 text-[15px] font-bold underline underline-offset-4"
+                  className="inline-flex items-center gap-2 text-sm font-semibold text-foreground"
                 >
                   Open on Voyager
                   <ExternalLink className="h-4 w-4" />
                 </a>
               </div>
             ) : (
-              <p className="text-[15px] leading-relaxed text-black/70">
-                Submitted DCA orders appear here immediately and also land on the shared logs page.
-              </p>
+              <div className="rounded-[22px] border border-dashed border-black/10 px-4 py-10 text-center text-sm text-muted-foreground dark:border-white/10">
+                No submitted DCA transaction yet.
+              </div>
             )}
-          </div>
-        </aside>
+          </section>
+        </div>
       </div>
+
+      <Dialog open={!!selectedOrder} onOpenChange={(open) => !open && setSelectedOrder(null)}>
+        <DialogContent className="sm:max-w-2xl">
+          {selectedOrder ? (
+            <>
+              <DialogHeader className="pr-10">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${getOrderStatusClasses(selectedOrder.status)}`}>
+                    {selectedOrder.status}
+                  </span>
+                  <span className="rounded-full border border-white/10 bg-white/6 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    {selectedOrder.provider}
+                  </span>
+                </div>
+                <DialogTitle className="mt-2">{selectedOrder.sellToken} to {selectedOrder.buyToken}</DialogTitle>
+                <DialogDescription>
+                  Review the plan, progress, and execution reference for this DCA order.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                {[
+                  ['Plan', selectedOrder.totalSellAmount],
+                  ['Bought', selectedOrder.boughtAmount],
+                  ['Sold', selectedOrder.soldAmount],
+                  ['Frequency', selectedOrder.frequency],
+                  ['Provider', selectedOrder.provider],
+                  ['Created', selectedOrder.createdAt],
+                  ['Order ID', selectedOrder.id],
+                ].map(([label, value]) => (
+                  <div
+                    key={label}
+                    className="rounded-[18px] border border-black/10 bg-black/[0.03] px-4 py-3 dark:border-white/10 dark:bg-white/5"
+                  >
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                      {label}
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-foreground">{value}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="rounded-[18px] border border-black/10 bg-black/[0.03] px-4 py-3 dark:border-white/10 dark:bg-white/5">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                      Order address
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-foreground">{formatAddress(selectedOrder.orderAddress)}</p>
+                  </div>
+                  <CopyButton value={selectedOrder.orderAddress} successMessage="Order address copied" />
+                </div>
+              </div>
+
+              <DialogFooter className="mt-2 sm:justify-between">
+                <Button variant="secondary" onClick={() => setSelectedOrder(null)}>
+                  Close
+                </Button>
+                <div className="flex flex-wrap gap-2">
+                  {selectedOrder.status === 'ACTIVE' ? (
+                    <Button
+                      variant="outline"
+                      onClick={() => void handleCancel(selectedOrder)}
+                      disabled={activeAction !== null || !isWalletReady}
+                    >
+                      {pendingOrderId === selectedOrder.id ? 'Cancelling...' : 'Cancel order'}
+                    </Button>
+                  ) : null}
+                </div>
+              </DialogFooter>
+            </>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

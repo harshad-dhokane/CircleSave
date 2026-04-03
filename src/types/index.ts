@@ -27,6 +27,34 @@ export interface CircleMember {
   isActive: boolean;
 }
 
+export interface CircleJoinRequest {
+  id: string;
+  circleId: string;
+  circleName: string;
+  circleAddress: string;
+  applicantAddress: string;
+  message: string;
+  collateralRequired: bigint;
+}
+
+export interface CircleStartReadyNotice {
+  id: string;
+  circleId: string;
+  circleName: string;
+  circleAddress: string;
+  currentMembers: number;
+  maxMembers: number;
+}
+
+export interface CircleMemberJoinNotice {
+  id: string;
+  circleId: string;
+  circleName: string;
+  circleAddress: string;
+  memberAddress: string;
+  joinedAt: number;
+}
+
 export interface Badge {
   id: string;
   name: string;

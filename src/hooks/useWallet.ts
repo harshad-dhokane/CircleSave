@@ -63,7 +63,7 @@ export function useWallet() {
   const connectWallet = useCallback(async (connectorId?: string) => {
     if (connectors.length === 0) {
       toast.error('No wallet connectors are available right now.');
-      return;
+      return false;
     }
 
     const selected =
@@ -73,19 +73,21 @@ export function useWallet() {
 
     if (!selected) {
       toast.error('No wallet connector found.');
-      return;
+      return false;
     }
 
     if (!selected.installed) {
       toast.error(`"${selected.name}" is not installed or not available in this browser.`);
-      return;
+      return false;
     }
 
     try {
       await connectAsync({ connector: selected.connector });
+      return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Wallet connection failed';
       toast.error(message);
+      return false;
     }
   }, [connectAsync, connectors, walletOptions]);
 

@@ -1,184 +1,121 @@
 import { Link } from 'react-router-dom';
-import { Users, Github, Twitter, MessageCircle, Heart, Send } from 'lucide-react';
+import { Github, MessageCircle, Send, Twitter, Users } from 'lucide-react';
+import { footerLinkGroups } from '@/lib/navigation';
 
 type FooterLink = {
   label: string;
-  href: string;
-  external?: boolean;
-};
-
-const footerLinks = {
-  product: [
-    { label: 'Discover Circles', href: '/circles' },
-    { label: 'Create Circle', href: '/circles/create' },
-    { label: 'Swap', href: '/swap' },
-    { label: 'Batching', href: '/batching' },
-    { label: 'DCA', href: '/dca' },
-    { label: 'Dashboard', href: '/dashboard' },
-    { label: 'Leaderboard', href: '/leaderboard' },
-  ],
-  resources: [
-    { label: 'Help Center', href: '/sdk' },
-    { label: 'How It Works', href: '/how-it-works' },
-    { label: 'Smart Contracts', href: '/contracts' },
-    { label: 'API', href: '/api' },
-  ],
-  community: [
-    { label: 'Discord', href: 'https://discord.gg/q6cY4QwH', external: true },
-    { label: 'Twitter', href: 'https://x.com/harsshadd', external: true },
-    { label: 'GitHub', href: 'https://github.com/harshad-dhokane', external: true },
-    { label: 'Telegram', href: 'https://t.me/+919604647941', external: true },
-  ],
-  legal: [
-    { label: 'Terms of Service', href: '/terms' },
-    { label: 'Privacy Policy', href: '/privacy' },
-    { label: 'Risk Disclosure', href: '/risk-disclosure' },
-  ],
+  to: string;
 };
 
 function FooterNavLink({ link }: { link: FooterLink }) {
-  if (link.external) {
-    return (
-      <a
-        href={link.href}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-[15px] text-gray-400 hover:text-white transition-colors font-medium"
-      >
-        {link.label}
-      </a>
-    );
-  }
-
   return (
     <Link
-      to={link.href}
-      className="text-[15px] text-gray-400 hover:text-white transition-colors font-medium"
+      to={link.to}
+      className="block w-fit text-sm leading-6 text-white/58 transition-colors hover:text-white"
     >
       {link.label}
     </Link>
   );
 }
 
-const socialLinks: Array<{ href: string; icon: typeof Twitter; hoverClassName: string; label: string }> = [
+const socialLinks = [
   {
     href: 'https://x.com/harsshadd',
     icon: Twitter,
-    hoverClassName: 'hover:bg-[#FF6B6B] hover:border-[#FF6B6B]',
     label: 'Twitter',
   },
   {
     href: 'https://github.com/harshad-dhokane',
     icon: Github,
-    hoverClassName: 'hover:bg-[#4ECDC4] hover:border-[#4ECDC4]',
     label: 'GitHub',
   },
   {
     href: 'https://discord.gg/q6cY4QwH',
     icon: MessageCircle,
-    hoverClassName: 'hover:bg-[#FFE66D] hover:border-[#FFE66D] hover:text-black',
     label: 'Discord',
   },
   {
     href: 'https://t.me/+919604647941',
     icon: Send,
-    hoverClassName: 'hover:bg-[#DDA0DD] hover:border-[#DDA0DD]',
     label: 'Telegram',
   },
-];
+] as const;
 
 export function Footer() {
   return (
-    <footer className="bg-black text-white">
-      <div className="page-shell py-16 md:py-20">
-        <div className="grid grid-cols-2 gap-x-8 gap-y-10 md:gap-12 lg:grid-cols-[1.35fr_1.35fr_1fr_1fr_1fr_1fr]">
-          {/* Brand */}
-          <div className="col-span-2 lg:col-span-2">
-            <Link to="/" className="flex items-center gap-2 mb-4">
-              <div className="w-10 h-10 bg-[#FF6B6B] border-[3px] border-white flex items-center justify-center">
-                <Users className="w-5 h-5 text-white" />
+    <footer className="pb-10 pt-6 sm:pb-12">
+      <div className="page-shell">
+        <div className="overflow-hidden rounded-[34px] border border-white/10 bg-[#05070c] px-6 py-8 text-white shadow-[0_34px_100px_-38px_rgba(0,0,0,0.92)] sm:px-8 sm:py-10 lg:px-10">
+          <div className="grid gap-10 md:grid-cols-2 xl:grid-cols-[minmax(0,1.35fr)_repeat(3,minmax(0,0.8fr))] xl:gap-8">
+            <div className="md:col-span-2 xl:col-span-1 xl:pr-8">
+              <div className="mb-5 flex items-center gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-slate-900">
+                  <Users className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="font-display text-2xl font-semibold tracking-[-0.04em] text-white">
+                    CircleSave
+                  </p>
+                  <p className="text-[11px] uppercase tracking-[0.2em] text-white/45">
+                    Management Workspace
+                  </p>
+                </div>
               </div>
-              <span className="text-2xl font-black">
-                Circle<span className="text-[#FF6B6B]">Save</span>
-              </span>
-            </Link>
-            <p className="max-w-sm text-base leading-relaxed text-gray-400 mb-6">
-              Community savings circles plus StarkZap-powered swap, DCA, lending, and shared wallet activity on StarkNet.
-            </p>
-            <div className="flex gap-3">
-              {socialLinks.map((item) => {
-                const Icon = item.icon;
+              <p className="max-w-md text-sm leading-7 text-white/58 sm:text-[15px]">
+                A cleaner operating shell for savings circles, StarkZap-powered routing, DCA, lending, and wallet activity on Starknet.
+              </p>
+              <div className="mt-6 flex flex-wrap gap-2">
+                {socialLinks.map((item) => {
+                  const Icon = item.icon;
 
-                return (
-                  <a
-                    key={item.label}
-                    href={item.href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    aria-label={item.label}
-                    className={`w-10 h-10 bg-white/10 border-[2px] border-white/20 flex items-center justify-center transition-colors ${item.hoverClassName}`}
-                  >
-                    <Icon className="w-5 h-5" />
-                  </a>
-                );
-              })}
+                  return (
+                    <a
+                      key={item.label}
+                      href={item.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={item.label}
+                      className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.05] text-white/72 transition duration-200 hover:-translate-y-0.5 hover:bg-white/10 hover:text-white"
+                    >
+                      <Icon className="h-4.5 w-4.5" />
+                    </a>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="min-w-0">
+              <p className="mb-4 text-[11px] font-semibold uppercase tracking-[0.2em] text-white/45">Product</p>
+              <div className="flex flex-col items-start gap-2.5">
+                {footerLinkGroups.product.map((link) => (
+                  <FooterNavLink key={link.label} link={link} />
+                ))}
+              </div>
+            </div>
+
+            <div className="min-w-0">
+              <p className="mb-4 text-[11px] font-semibold uppercase tracking-[0.2em] text-white/45">Resources</p>
+              <div className="flex flex-col items-start gap-2.5">
+                {footerLinkGroups.resources.map((link) => (
+                  <FooterNavLink key={link.label} link={link} />
+                ))}
+              </div>
+            </div>
+
+            <div className="min-w-0">
+              <p className="mb-4 text-[11px] font-semibold uppercase tracking-[0.2em] text-white/45">Legal</p>
+              <div className="flex flex-col items-start gap-2.5">
+                {footerLinkGroups.legal.map((link) => (
+                  <FooterNavLink key={link.label} link={link} />
+                ))}
+              </div>
             </div>
           </div>
 
-          {/* Links */}
-          <div>
-            <h4 className="font-black mb-4 text-[#FF6B6B]">Product</h4>
-            <ul className="space-y-2">
-              {footerLinks.product.map(link => (
-                <li key={link.label}>
-                  <FooterNavLink link={link} />
-                </li>
-              ))}
-            </ul>
+          <div className="mt-12 grid gap-3 border-t border-white/10 pt-6 text-sm text-white/45 md:grid-cols-2 md:items-center">
+            <p>Built on Starknet for circles, routing, and operational transparency.</p>
+            <p className="md:text-right">© 2026 CircleSave. All rights reserved.</p>
           </div>
-
-          <div>
-            <h4 className="font-black mb-4 text-[#4ECDC4]">Resources</h4>
-            <ul className="space-y-2">
-              {footerLinks.resources.map(link => (
-                <li key={link.label}>
-                  <FooterNavLink link={link} />
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div>
-            <h4 className="font-black mb-4 text-[#FFE66D]">Community</h4>
-            <ul className="space-y-2">
-              {footerLinks.community.map(link => (
-                <li key={link.label}>
-                  <FooterNavLink link={link} />
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div>
-            <h4 className="font-black mb-4 text-[#DDA0DD]">Legal</h4>
-            <ul className="space-y-2">
-              {footerLinks.legal.map(link => (
-                <li key={link.label}>
-                  <FooterNavLink link={link} />
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-
-        {/* Bottom Bar */}
-        <div className="border-t border-white/10 mt-12 pt-8 flex flex-col md:flex-row items-center justify-between gap-4">
-          <p className="text-gray-400 text-base flex items-center gap-1">
-            Built with <Heart className="w-4 h-4 text-[#FF6B6B] fill-[#FF6B6B]" /> on StarkNet
-          </p>
-          <p className="text-gray-400 text-base">
-            © 2026 CircleSave. All rights reserved.
-          </p>
         </div>
       </div>
     </footer>

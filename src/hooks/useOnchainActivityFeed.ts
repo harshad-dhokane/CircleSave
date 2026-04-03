@@ -21,7 +21,6 @@ const rpc = new RpcProvider({ nodeUrl: RPC_URL });
 const REFRESH_INTERVAL_MS = 15_000;
 const INITIAL_LOOKBACK_BLOCKS = 150_000;
 const FACTORY_PAGE_SIZE = 25;
-const ACTIVITY_FEED_CACHE_KEY = 'circlesave:onchain-activity-feed:v2';
 
 type ActivityCategory = 'factory' | 'circle' | 'reputation' | 'collateral';
 type ActivityTone = 'success' | 'warning' | 'highlight' | 'neutral';
@@ -99,12 +98,6 @@ export interface OnchainActivityEntry {
   txHash: string;
   valueText?: string | null;
 }
-
-type CachedActivityFeed = {
-  entries: OnchainActivityEntry[];
-  lastUpdatedAt: number | null;
-  latestFetchedBlock: number | null;
-};
 
 const FACTORY_DECODER = createEventDecoder(CIRCLE_FACTORY_ABI as unknown as Abi);
 const CIRCLE_DECODER = createEventDecoder(CIRCLE_ABI as unknown as Abi);
@@ -227,60 +220,6 @@ function buildActivityEntry(input: ActivityEntryInput): OnchainActivityEntry {
     txHash: input.txHash,
     valueText: input.valueText,
   };
-}
-
-function readCachedActivityFeed(): CachedActivityFeed {
-  if (typeof window === 'undefined') {
-    return { entries: [], lastUpdatedAt: null, latestFetchedBlock: null };
-  }
-
-  try {
-    const raw = window.localStorage.getItem(ACTIVITY_FEED_CACHE_KEY);
-    if (!raw) {
-      return { entries: [], lastUpdatedAt: null, latestFetchedBlock: null };
-    }
-
-    const parsed = JSON.parse(raw) as Partial<CachedActivityFeed>;
-    return {
-      entries: Array.isArray(parsed.entries) ? parsed.entries : [],
-      lastUpdatedAt: typeof parsed.lastUpdatedAt === 'number' ? parsed.lastUpdatedAt : null,
-      latestFetchedBlock: typeof parsed.latestFetchedBlock === 'number' ? parsed.latestFetchedBlock : null,
-    };
-  } catch {
-    return { entries: [], lastUpdatedAt: null, latestFetchedBlock: null };
-  }
-}
-
-function writeCachedActivityFeed(feed: CachedActivityFeed) {
-  if (typeof window === 'undefined') {
-    return;
-  }
-
-  try {
-    window.localStorage.setItem(ACTIVITY_FEED_CACHE_KEY, JSON.stringify(feed));
-  } catch {
-    return;
-  }
-}
-
-export async function primeOnchainActivityFeedCache() {
-  const hasConfiguredContracts = [CONTRACTS.CIRCLE_FACTORY, CONTRACTS.REPUTATION, CONTRACTS.COLLATERAL_MANAGER]
-    .some(isConfiguredAddress);
-
-  if (!hasConfiguredContracts) {
-    return;
-  }
-
-  try {
-    const nextFeed = await loadOnchainActivityFeed();
-    writeCachedActivityFeed({
-      entries: nextFeed.entries,
-      lastUpdatedAt: Date.now(),
-      latestFetchedBlock: nextFeed.latestFetchedBlock,
-    });
-  } catch {
-    return;
-  }
 }
 
 function unpackParsedEvent(event: ParsedContractEvent): DecodedEvent | null {
@@ -834,11 +773,11 @@ async function loadOnchainActivityFeed(options?: {
 }
 
 export function useOnchainActivityFeed() {
-  const [entries, setEntries] = useState<OnchainActivityEntry[]>(() => readCachedActivityFeed().entries);
-  const [isLoading, setIsLoading] = useState(() => readCachedActivityFeed().entries.length === 0);
+  const [entries, setEntries] = useState<OnchainActivityEntry[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(() => readCachedActivityFeed().lastUpdatedAt);
-  const [latestFetchedBlock, setLatestFetchedBlock] = useState<number | null>(() => readCachedActivityFeed().latestFetchedBlock);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null);
+  const [latestFetchedBlock, setLatestFetchedBlock] = useState<number | null>(null);
   const entriesRef = useRef(entries);
   const latestFetchedBlockRef = useRef(latestFetchedBlock);
 
@@ -867,11 +806,6 @@ export function useOnchainActivityFeed() {
       setLatestFetchedBlock(nextFeed.latestFetchedBlock);
       entriesRef.current = nextFeed.entries;
       latestFetchedBlockRef.current = nextFeed.latestFetchedBlock;
-      writeCachedActivityFeed({
-        entries: nextFeed.entries,
-        lastUpdatedAt: syncedAt,
-        latestFetchedBlock: nextFeed.latestFetchedBlock,
-      });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unable to load on-chain activity.';
       if (entriesRef.current.length === 0) {
@@ -901,6 +835,7 @@ export function useOnchainActivityFeed() {
       .some(isConfiguredAddress),
     isLoading,
     lastUpdatedAt,
+    refreshIntervalMs: REFRESH_INTERVAL_MS,
     refresh: () => refresh(),
   };
 }

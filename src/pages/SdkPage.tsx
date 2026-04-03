@@ -407,7 +407,7 @@ function RoutePill(props: FeatureRoute) {
   return (
     <Link
       to={props.to}
-      className="inline-flex items-center gap-2 border-[2px] border-black bg-white px-3 py-1.5 text-xs font-black uppercase tracking-[0.08em] shadow-[2px_2px_0px_0px_#1a1a1a] transition-all hover:-translate-x-0.5 hover:-translate-y-0.5"
+      className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-white/72 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-foreground shadow-[0_14px_30px_-22px_rgba(15,23,42,0.26)] backdrop-blur-xl transition-colors hover:bg-white dark:border-white/10 dark:bg-white/6 dark:hover:bg-white/10"
     >
       {props.label}
     </Link>
@@ -416,7 +416,7 @@ function RoutePill(props: FeatureRoute) {
 
 function FilePill(props: { path: string }) {
   return (
-    <div className="inline-flex border-[2px] border-black bg-[#FEFAE0] px-3 py-1.5 font-mono text-[12px] shadow-[2px_2px_0px_0px_#1a1a1a]">
+    <div className="inline-flex rounded-full border border-black/10 bg-black/[0.03] px-3 py-1.5 font-mono text-[12px] text-foreground/78 backdrop-blur-xl dark:border-white/10 dark:bg-white/6">
       {props.path}
     </div>
   );
@@ -428,11 +428,11 @@ function TopicTabTrigger(props: { topic: GuideTopic }) {
   return (
     <TabsTrigger
       value={props.topic.id}
-      className="flex-none min-w-[170px] shrink-0 justify-start rounded-none border-[2px] border-transparent bg-transparent px-3 py-2.5 text-left font-black uppercase tracking-[0.04em] transition-all hover:border-black hover:bg-[#FEFAE0] hover:shadow-[2px_2px_0px_0px_#1a1a1a] data-[state=active]:border-black data-[state=active]:bg-black data-[state=active]:text-white data-[state=active]:shadow-[2px_2px_0px_0px_#1a1a1a] sm:min-w-[188px] xl:min-w-0 xl:w-full xl:flex-1"
+      className="flex-none min-w-[170px] shrink-0 justify-start rounded-[18px] border border-transparent bg-transparent px-3 py-2.5 text-left text-[13px] font-semibold uppercase tracking-[0.1em] transition-all hover:bg-black/[0.04] dark:hover:bg-white/8 data-[state=active]:border-black/10 data-[state=active]:bg-foreground data-[state=active]:text-background data-[state=active]:shadow-[0_16px_36px_-24px_rgba(15,23,42,0.42)] dark:data-[state=active]:border-white/10 dark:data-[state=active]:bg-white dark:data-[state=active]:text-slate-950 sm:min-w-[188px] xl:min-w-0 xl:w-full xl:flex-1"
     >
       <div className="flex items-start gap-3">
         <div
-          className="flex h-9 w-9 shrink-0 items-center justify-center border-[2px] border-black"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border border-black/10 shadow-[0_14px_28px_-20px_rgba(15,23,42,0.22)] dark:border-white/10"
           style={{ backgroundColor: props.topic.color }}
         >
           <Icon className="h-4 w-4 text-black" />
@@ -461,14 +461,14 @@ function HelpSection(props: {
       <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div>
           <div
-            className="mb-3 inline-flex items-center gap-2 border-[2px] border-black px-3 py-1.5 text-xs font-black uppercase tracking-[0.08em]"
+            className="mb-3 inline-flex items-center gap-2 rounded-full border border-black/10 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-black/70 shadow-[0_14px_30px_-22px_rgba(15,23,42,0.24)] backdrop-blur-xl dark:border-white/10 dark:text-white/65"
             style={{ backgroundColor: props.color }}
           >
             <Icon className="h-4 w-4 text-black" />
             {props.eyebrow}
           </div>
-          <h2 className="text-3xl font-black md:text-4xl">{props.title}</h2>
-          <p className="mt-3 max-w-4xl text-[15px] leading-relaxed text-black/70">{props.description}</p>
+          <h2 className="font-display text-3xl font-semibold tracking-[-0.04em] text-foreground md:text-4xl">{props.title}</h2>
+          <p className="mt-3 max-w-4xl text-[15px] leading-7 text-muted-foreground">{props.description}</p>
         </div>
       </div>
       {props.children}
@@ -480,8 +480,8 @@ function BulletList(props: { items: string[] }) {
   return (
     <ul className="space-y-3">
       {props.items.map((item) => (
-        <li key={item} className="flex gap-3 text-[15px] leading-relaxed text-black/75">
-          <span className="mt-1 h-2.5 w-2.5 shrink-0 border border-black bg-[#FF6B6B]" />
+        <li key={item} className="flex gap-3 text-[15px] leading-7 text-muted-foreground">
+          <span className="mt-2 h-2.5 w-2.5 shrink-0 rounded-full bg-primary" />
           <span>{item}</span>
         </li>
       ))}
@@ -491,13 +491,13 @@ function BulletList(props: { items: string[] }) {
 
 function SnippetCard(props: SnippetEntry) {
   return (
-    <div className="neo-card overflow-hidden p-0">
-      <div className="border-b-[2px] border-black bg-white p-5">
-        <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">{props.file}</p>
-        <h3 className="mt-2 text-2xl font-black">{props.title}</h3>
-        <p className="mt-3 text-[15px] leading-relaxed text-black/70">{props.summary}</p>
+    <div className="neo-panel overflow-hidden p-0">
+      <div className="content-divider-bottom bg-transparent p-5">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">{props.file}</p>
+        <h3 className="mt-2 font-display text-2xl font-semibold tracking-[-0.04em] text-foreground">{props.title}</h3>
+        <p className="mt-3 text-[15px] leading-7 text-muted-foreground">{props.summary}</p>
       </div>
-      <pre className="overflow-x-auto bg-black p-5 text-[13px] leading-relaxed text-white">
+      <pre className="overflow-x-auto bg-[#070b12] p-5 text-[13px] leading-relaxed text-white dark:bg-[#04060b]">
         <code>{props.code}</code>
       </pre>
     </div>
@@ -524,51 +524,43 @@ export function SdkPage() {
   }, [activeTopic]);
 
   return (
-    <div className="min-h-screen bg-[#FEFAE0]">
-      <div className="content-divider-bottom border-b-[2px] border-black bg-white">
-        <div className="page-shell py-8 md:py-10">
-          <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-            <div>
-              <div className="mb-3 inline-flex items-center gap-2 border-[2px] border-black bg-[#FFE66D] px-3 py-1.5 text-sm font-black uppercase tracking-[0.08em]">
-                <BookOpen className="h-4 w-4" />
-                CircleSave Help Center
-              </div>
-              <h1 className="text-4xl font-black md:text-5xl">Product Guide + StarkZap v2 Map</h1>
-              <p className="mt-3 max-w-4xl text-[15px] leading-relaxed text-black/70 md:text-base">
-                This page replaces the lightweight SDK summary and now acts as the working guide for CircleSave.
-                It explains how the app behaves today, which routes own each flow, what StarkZap v2 features are implemented,
-                and where those integrations live in code.
-              </p>
+    <div className="space-y-6 pb-4">
+      <section className="neo-panel neo-spotlight p-6 md:p-8">
+        <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+          <div>
+            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-black/10 bg-white/72 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-black/60 backdrop-blur-xl dark:border-white/10 dark:bg-white/6 dark:text-white/60">
+              <BookOpen className="h-3.5 w-3.5" />
+              CircleSave Help Center
             </div>
+            <h1 className="font-display text-[2rem] font-semibold tracking-[-0.05em] text-foreground md:text-[2.7rem]">
+              Product guide and StarkZap integration map
+            </h1>
+            <p className="mt-3 max-w-4xl text-[15px] leading-7 text-muted-foreground">
+              This workspace documents the current CircleSave operating model, route ownership, integrated StarkZap features, and the main files that power each flow.
+            </p>
+          </div>
 
-            <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap gap-3">
+            <Button asChild>
               <Link to="/circles">
-                <Button className="neo-button-primary">
-                  Open Circles
-                  <ArrowRight className="ml-2 h-5 w-5" />
-                </Button>
+                Open Circles
+                <ArrowRight className="h-4 w-4" />
               </Link>
-              <Link to="/swap">
-                <Button variant="outline" className="border-[2px] border-black">
-                  Open Swap
-                </Button>
-              </Link>
-              <Link to="/batching">
-                <Button variant="outline" className="border-[2px] border-black">
-                  Open Batching
-                </Button>
-              </Link>
-              <Link to="/logs">
-                <Button variant="outline" className="border-[2px] border-black">
-                  View Logs
-                </Button>
-              </Link>
-            </div>
+            </Button>
+            <Button asChild variant="outline">
+              <Link to="/swap">Open Swap</Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link to="/batching">Open Batching</Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link to="/logs">View Logs</Link>
+            </Button>
           </div>
         </div>
-      </div>
+      </section>
 
-      <div className="page-shell py-8 md:py-10">
+      <div className="page-shell py-1 md:py-1">
         <Tabs
           value={activeTopic}
           onValueChange={(value) => {
@@ -578,7 +570,7 @@ export function SdkPage() {
           className="w-full animate-fade-in gap-4 xl:grid xl:grid-cols-[252px_minmax(0,1fr)] xl:items-start xl:gap-5 2xl:gap-6"
         >
           <aside className="space-y-3 xl:self-start">
-            <TabsList className="h-auto w-full flex-nowrap justify-start gap-1 overflow-x-auto rounded-none border-[3px] border-black bg-white p-1.5 shadow-[0_4px_0px_0px_#1a1a1a] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden xl:flex-col xl:flex-nowrap xl:items-stretch xl:overflow-visible">
+            <TabsList className="h-auto w-full flex-nowrap justify-start gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden xl:flex-col xl:flex-nowrap xl:items-stretch xl:overflow-visible">
               {guideTopics.map((topic) => (
                 <TopicTabTrigger key={topic.id} topic={topic} />
               ))}

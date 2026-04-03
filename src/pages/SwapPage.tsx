@@ -2,13 +2,9 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowDownUp,
-  ArrowRight,
-  CheckCircle2,
   ExternalLink,
   FileText,
-  Sparkles,
   Wallet,
-  Zap,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -26,6 +22,7 @@ import {
   type StarkZapTokenKey,
   useStarkZapActions,
 } from '@/hooks/useStarkZapActions';
+import { useStarkZapModuleStats } from '@/hooks/useStarkZapModuleStats';
 import { useWallet } from '@/hooks/useWallet';
 
 const TOKEN_OPTIONS: StarkZapTokenKey[] = ['ETH', 'USDC', 'STRK'];
@@ -34,13 +31,11 @@ const ROUTE_PRESETS: Array<{
   label: string;
   tokenIn: StarkZapTokenKey;
   tokenOut: StarkZapTokenKey;
-  helper: string;
-  color: string;
 }> = [
-  { label: 'Faucet Friendly', tokenIn: 'STRK', tokenOut: 'ETH', helper: 'Safest first test route on Sepolia.', color: '#4ECDC4' },
-  { label: 'Stable To STRK', tokenIn: 'USDC', tokenOut: 'STRK', helper: 'Convert stable balance into contribution funds.', color: '#FFE66D' },
-  { label: 'ETH To STRK', tokenIn: 'ETH', tokenOut: 'STRK', helper: 'Top up STRK balance for circle payments.', color: '#FF6B6B' },
-] as const;
+  { label: 'USDC to STRK', tokenIn: 'USDC', tokenOut: 'STRK' },
+  { label: 'ETH to STRK', tokenIn: 'ETH', tokenOut: 'STRK' },
+  { label: 'STRK to ETH', tokenIn: 'STRK', tokenOut: 'ETH' },
+];
 
 function pickComparison(
   comparisons: StarkZapSwapComparison[],
@@ -52,15 +47,15 @@ function pickComparison(
 }
 
 export function SwapPage() {
-  const { isConnected, address } = useWallet();
+  const { isConnected } = useWallet();
   const {
     compareSwapProviders,
     executeSwap,
     isWalletReady,
     swapProviderOptions,
   } = useStarkZapActions();
-  const [tokenIn, setTokenIn] = useState<StarkZapTokenKey>('STRK');
-  const [tokenOut, setTokenOut] = useState<StarkZapTokenKey>('ETH');
+  const [tokenIn, setTokenIn] = useState<StarkZapTokenKey>('USDC');
+  const [tokenOut, setTokenOut] = useState<StarkZapTokenKey>('STRK');
   const [amount, setAmount] = useState('5');
   const [providerId, setProviderId] = useState<StarkZapSwapProviderId>('best');
   const [comparisons, setComparisons] = useState<StarkZapSwapComparison[]>([]);
@@ -68,16 +63,16 @@ export function SwapPage() {
   const [activeAction, setActiveAction] = useState<'preview' | 'execute' | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const feeMode: StarkZapExecutionMode = 'user_pays';
+  const moduleStats = useStarkZapModuleStats('swap');
 
-  const selectedRoute = useMemo(
-    () => ROUTE_PRESETS.find((route) => route.tokenIn === tokenIn && route.tokenOut === tokenOut),
-    [tokenIn, tokenOut],
-  );
   const selectedComparison = useMemo(
     () => pickComparison(comparisons, providerId),
     [comparisons, providerId],
   );
-  const accountInitializing = isConnected && !isWalletReady;
+  const selectedPreset = useMemo(
+    () => ROUTE_PRESETS.find((route) => route.tokenIn === tokenIn && route.tokenOut === tokenOut) || null,
+    [tokenIn, tokenOut],
+  );
 
   const handlePreview = async () => {
     try {
@@ -120,131 +115,83 @@ export function SwapPage() {
 
   if (!isConnected) {
     return (
-      <div className="min-h-screen bg-[#FEFAE0] flex items-center justify-center">
-        <div className="neo-card max-w-xl p-10 text-center">
-          <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center border-[3px] border-black bg-[#FFE66D]">
-            <Wallet className="h-9 w-9" />
+      <div className="space-y-4 pb-4">
+        <section className="neo-panel p-10 text-center">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-[22px] border border-white/10 bg-white/6 text-white">
+            <Wallet className="h-7 w-7" />
           </div>
-          <h2 className="mb-3 text-3xl font-black">Connect Your Wallet</h2>
-          <p className="text-[15px] leading-relaxed text-black/70">
-            Swap uses the same app-wide wallet session. Connect from the header once, then come back here to compare routes and trade.
-          </p>
-        </div>
+          <h2 className="font-display text-3xl font-semibold tracking-[-0.05em] text-foreground">
+            Connect to use swap
+          </h2>
+        </section>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#FEFAE0]">
-      <div className="content-divider-bottom border-b-[2px] border-black bg-white">
-        <div className="page-shell py-8 md:py-10">
-          <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-            <div>
-              <div className="mb-3 inline-flex items-center gap-2 border-[2px] border-black bg-[#4ECDC4] px-3 py-1.5 text-sm font-black uppercase tracking-[0.08em]">
-                <Zap className="h-4 w-4" />
-                StarkZap v2 Swap
-              </div>
-              <h1 className="text-4xl font-black md:text-5xl">Routing Workspace</h1>
-              <p className="mt-3 max-w-3xl text-[15px] leading-relaxed text-black/70 md:text-base">
-                Compare AVNU and Ekubo, pick the best route or force a venue, then execute with the same wallet session you use across circles, DCA, and lending.
-              </p>
-              <div className="mt-4 flex flex-wrap gap-3">
-                <div className="neo-chip bg-white">
-                  <Wallet className="h-4 w-4" />
-                  <span className="text-wrap-safe min-w-0 font-mono normal-case tracking-normal">
-                    {address}
-                  </span>
-                </div>
-                <div className="neo-chip bg-[#FEFAE0]">
-                  <Sparkles className="h-4 w-4" />
-                  STRK -&gt; ETH is the cleanest Sepolia first test
-                </div>
-              </div>
+    <div className="space-y-4 pb-4">
+      <div className="grid gap-4 xl:items-start xl:grid-cols-[minmax(0,1.06fr)_minmax(320px,0.94fr)]">
+        <section className="neo-panel p-4 md:p-5">
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+            <div className="flex flex-wrap gap-2">
+              <div className="neo-chip">{selectedPreset?.label || `${tokenIn} to ${tokenOut}`}</div>
+              <div className="neo-chip">{providerId === 'best' ? 'Best route' : 'Manual provider'}</div>
             </div>
-
-            <div className="flex flex-wrap gap-3">
-              <Link to="/sdk">
-                <Button variant="outline" className="border-[2px] border-black">
-                  Help Center
-                </Button>
-              </Link>
+            <Button variant="outline" size="sm" asChild className="w-full sm:w-auto">
               <Link to="/logs">
-                <Button variant="outline" className="border-[2px] border-black">
-                  View Swap Logs
-                </Button>
+                <FileText className="h-4 w-4" />
+                Logs
               </Link>
-            </div>
+            </Button>
           </div>
-        </div>
-      </div>
 
-      <div className="page-shell grid gap-6 py-8 xl:grid-cols-[minmax(0,1fr)_360px] xl:py-10">
-        {accountInitializing && (
-          <div className="xl:col-span-2 border-[2px] border-black bg-[#FFE66D] px-5 py-4 text-sm font-bold leading-relaxed shadow-[3px_3px_0px_0px_#1a1a1a]">
-            Wallet session is finishing setup. Swap actions will unlock in a moment.
-          </div>
-        )}
-        <section className="space-y-6">
-          <div className="neo-panel p-6">
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <div>
-                <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Recommended Routes</p>
-                <h2 className="text-2xl font-black">Start From A Proven Pair</h2>
+          <div className="mb-4 grid gap-3 sm:grid-cols-3">
+            {[
+              { label: 'Total transactions', value: String(moduleStats.totalTransactions) },
+              { label: 'My transactions', value: String(moduleStats.myTransactions) },
+              { label: 'Transaction amount', value: moduleStats.amountLabel },
+            ].map((item) => (
+              <div key={item.label} className="neo-stat-tile">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  {item.label}
+                </p>
+                <p className="mt-2 text-sm font-semibold text-foreground sm:text-base">
+                  {item.value}
+                </p>
               </div>
-              <div className="neo-chip bg-white">Best Route Engine</div>
-            </div>
-            <div className="grid gap-4 md:grid-cols-3">
-              {ROUTE_PRESETS.map((route) => (
+            ))}
+          </div>
+
+          <div className="scrollbar-hidden mb-4 flex gap-2 overflow-x-auto pb-1">
+            {ROUTE_PRESETS.map((route) => {
+              const active = route.tokenIn === tokenIn && route.tokenOut === tokenOut;
+
+              return (
                 <button
                   key={route.label}
                   type="button"
                   onClick={() => applyPresetRoute(route)}
-                  className={`text-left border-[2px] border-black p-4 transition-all hover:-translate-y-0.5 hover:shadow-[4px_4px_0px_0px_#1a1a1a] ${
-                    route.tokenIn === tokenIn && route.tokenOut === tokenOut ? 'bg-white' : 'bg-[#FEFAE0]'
+                  className={`rounded-full border px-3.5 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] transition ${
+                    active
+                      ? 'border-[#9ad255]/35 bg-[#B5F36B] text-slate-950'
+                      : 'border-black/10 bg-black/[0.03] text-muted-foreground hover:bg-black/[0.05] dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/8'
                   }`}
                 >
-                  <div
-                    className="mb-3 h-3 w-16 border-[2px] border-black"
-                    style={{ backgroundColor: route.color }}
-                  />
-                  <p className="font-black">{route.label}</p>
-                  <p className="mt-2 text-sm text-black/65">{route.tokenIn} {'->'} {route.tokenOut}</p>
-                  <p className="mt-2 text-sm leading-relaxed text-black/60">{route.helper}</p>
+                  {route.label}
                 </button>
-              ))}
-            </div>
+              );
+            })}
           </div>
 
-          <div className="neo-panel p-6 md:p-8">
-            <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="space-y-3">
+            <div className="grid gap-3 rounded-[18px] border border-black/10 bg-black/[0.03] p-3.5 dark:border-white/10 dark:bg-white/5 md:grid-cols-[minmax(0,1fr)_48px_minmax(0,1fr)] md:items-end xl:grid-cols-[minmax(0,1fr)_48px_minmax(0,1fr)_200px]">
               <div>
-                <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Trade Builder</p>
-                <h2 className="text-3xl font-black">Build A Route</h2>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {AMOUNT_PRESETS.map((preset) => (
-                  <button
-                    key={preset}
-                    type="button"
-                    onClick={() => setAmount(preset)}
-                    className={`border-[2px] border-black px-3 py-1.5 text-sm font-black ${
-                      amount === preset ? 'bg-black text-white' : 'bg-white'
-                    }`}
-                  >
-                    {preset}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-[1fr_auto_1fr]">
-              <div>
-                <p className="mb-2 text-sm font-bold">Sell Token</p>
+                <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Sell asset</p>
                 <Select value={tokenIn} onValueChange={(value) => setTokenIn(value as StarkZapTokenKey)}>
-                  <SelectTrigger className="w-full border-[2px] border-black bg-white">
+                  <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="border-[2px] border-black">
+                  <SelectContent>
                     {TOKEN_OPTIONS.map((token) => (
                       <SelectItem key={token} value={token}>
                         {token}
@@ -254,24 +201,24 @@ export function SwapPage() {
                 </Select>
               </div>
 
-              <div className="flex items-end justify-center">
+              <div className="flex items-end justify-center lg:pb-1">
                 <button
                   type="button"
                   onClick={flipRoute}
-                  className="flex h-12 w-12 items-center justify-center border-[2px] border-black bg-[#FEFAE0]"
-                  title="Flip route"
+                  className="flex h-10 w-10 items-center justify-center rounded-xl border border-black/10 bg-black/[0.03] text-foreground transition hover:bg-black/[0.05] dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/8"
+                  aria-label="Flip route"
                 >
-                  <ArrowDownUp className="h-5 w-5" />
+                  <ArrowDownUp className="h-4.5 w-4.5" />
                 </button>
               </div>
 
               <div>
-                <p className="mb-2 text-sm font-bold">Buy Token</p>
+                <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Buy asset</p>
                 <Select value={tokenOut} onValueChange={(value) => setTokenOut(value as StarkZapTokenKey)}>
-                  <SelectTrigger className="w-full border-[2px] border-black bg-white">
+                  <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="border-[2px] border-black">
+                  <SelectContent>
                     {TOKEN_OPTIONS.map((token) => (
                       <SelectItem key={token} value={token}>
                         {token}
@@ -281,23 +228,13 @@ export function SwapPage() {
                 </Select>
               </div>
 
-              <div>
-                <p className="mb-2 text-sm font-bold">Amount</p>
-                <Input
-                  value={amount}
-                  onChange={(event) => setAmount(event.target.value)}
-                  className="border-[2px] border-black bg-white"
-                  placeholder="5"
-                />
-              </div>
-
-              <div>
-                <p className="mb-2 text-sm font-bold">Provider</p>
+              <div className="md:col-span-3 xl:col-span-1">
+                <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Provider</p>
                 <Select value={providerId} onValueChange={(value) => setProviderId(value as StarkZapSwapProviderId)}>
-                  <SelectTrigger className="w-full border-[2px] border-black bg-white">
+                  <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="border-[2px] border-black">
+                  <SelectContent>
                     {swapProviderOptions.map((option) => (
                       <SelectItem key={option.value} value={option.value}>
                         {option.label}
@@ -306,96 +243,110 @@ export function SwapPage() {
                   </SelectContent>
                 </Select>
               </div>
-
             </div>
 
-            <div className="mt-6 flex flex-wrap gap-3">
-              <Button type="button" onClick={handlePreview} disabled={activeAction !== null || !isWalletReady} className="neo-button-secondary">
-                {activeAction === 'preview' ? 'Comparing Routes...' : 'Compare Routes'}
-              </Button>
-              <Button type="button" onClick={handleExecute} disabled={activeAction !== null || !isWalletReady} className="neo-button-primary">
-                {activeAction === 'execute' ? 'Submitting Swap...' : 'Execute Swap'}
-              </Button>
-            </div>
-
-            {errorMessage && (
-              <div className="mt-6 border-[2px] border-black bg-[#FF6B6B]/15 p-4">
-                <p className="font-black text-[#8b1e1e]">Swap Error</p>
-                <p className="mt-1 text-[15px] leading-relaxed text-black/75">{errorMessage}</p>
-              </div>
-            )}
-          </div>
-
-          <div className="neo-panel p-6">
-            <div className="mb-4 flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center border-[2px] border-black bg-[#FFE66D]">
-                <CheckCircle2 className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Execution Notes</p>
-                <h2 className="text-2xl font-black">Why This Matters</h2>
-              </div>
-            </div>
-            <div className="grid gap-3 md:grid-cols-3">
-              {[
-                'Best Route mode proves CircleSave understands StarkZap as a multi-provider engine, not a single hardcoded API.',
-                'Forced AVNU and Ekubo routing lets judges inspect the actual venue choice and compare outputs directly.',
-                'CircleSave uses regular wallet signing for this Cartridge session so swap execution stays stable and predictable.',
-              ].map((item) => (
-                <div key={item} className="border-[2px] border-black bg-[#FEFAE0] p-4 text-sm leading-relaxed text-black/70">
-                  {item}
+            <div className="rounded-[18px] border border-black/10 bg-black/[0.03] p-3.5 dark:border-white/10 dark:bg-white/5">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Amount</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  {AMOUNT_PRESETS.map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setAmount(preset)}
+                      className={`rounded-full border px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] transition ${
+                        amount === preset
+                          ? 'border-[#9ad255]/35 bg-[#B5F36B] text-slate-950'
+                          : 'border-black/10 bg-black/[0.03] text-muted-foreground hover:bg-black/[0.05] dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/8'
+                      }`}
+                    >
+                      {preset}
+                    </button>
+                  ))}
                 </div>
-              ))}
+              </div>
+              <Input value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="5" />
             </div>
           </div>
+
+          <div className="mt-5 grid gap-3 sm:flex sm:flex-wrap">
+            <Button variant="outline" onClick={handlePreview} disabled={activeAction !== null || !isWalletReady} className="w-full sm:w-auto">
+              {activeAction === 'preview' ? 'Comparing...' : 'Compare'}
+            </Button>
+            <Button onClick={handleExecute} disabled={activeAction !== null || !isWalletReady} className="w-full sm:w-auto">
+              {activeAction === 'execute' ? 'Submitting...' : 'Swap'}
+            </Button>
+          </div>
+
+          {errorMessage ? (
+            <div className="mt-4 rounded-[20px] border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
+              {errorMessage}
+            </div>
+          ) : null}
         </section>
 
-        <aside className="neo-sticky-rail space-y-5">
-          <div className="neo-panel p-6">
-            <div className="mb-4 flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center border-[2px] border-black bg-[#FF6B6B]">
-                <ArrowRight className="h-5 w-5 text-white" />
-              </div>
-              <div>
-                <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Execution Rail</p>
-                <h2 className="text-2xl font-black">Current Route</h2>
-              </div>
+        <div className="space-y-4">
+          <section className="neo-panel p-4 md:p-5">
+            <div className="mb-4">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                Execution
+              </p>
+              <h3 className="mt-1 font-display text-[1.2rem] font-semibold tracking-[-0.04em] text-foreground">
+                Result
+              </h3>
             </div>
-            <div className="space-y-3">
-              <div className="border-[2px] border-black bg-[#FEFAE0] p-4">
-                <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Selected Pair</p>
-                <p className="mt-2 text-2xl font-black">{tokenIn} {'->'} {tokenOut}</p>
-                <p className="mt-2 text-sm text-black/65">{selectedRoute?.helper || 'Custom route selected from the builder.'}</p>
-              </div>
-              <div className="border-[2px] border-black bg-white p-4">
-                <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Route Mode</p>
-                <p className="mt-2 text-2xl font-black">
-                  {swapProviderOptions.find((option) => option.value === providerId)?.label}
-                </p>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="border-[2px] border-black bg-white p-4">
-                  <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Sell Amount</p>
-                  <p className="mt-2 text-xl font-black">{amount || '0'}</p>
-                </div>
-                <div className="border-[2px] border-black bg-white p-4">
-                  <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Execution</p>
-                  <p className="mt-2 text-xl font-black">Regular Signing</p>
-                </div>
-              </div>
-            </div>
-          </div>
 
-          <div className="neo-panel p-6">
+            {selectedComparison ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-[16px] border border-black/10 bg-black/[0.03] px-3.5 py-3 dark:border-white/10 dark:bg-white/5 sm:col-span-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    Estimated output
+                  </p>
+                  <p className="mt-1 text-lg font-semibold text-foreground">{selectedComparison.amountOut}</p>
+                </div>
+                <div className="rounded-[16px] border border-black/10 bg-black/[0.03] px-3.5 py-3 dark:border-white/10 dark:bg-white/5">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    Provider
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-foreground">{selectedComparison.provider}</p>
+                </div>
+                <div className="rounded-[16px] border border-black/10 bg-black/[0.03] px-3.5 py-3 dark:border-white/10 dark:bg-white/5">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    Calls
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-foreground">{selectedComparison.callCount}</p>
+                </div>
+                <div className="rounded-[16px] border border-black/10 bg-black/[0.03] px-3.5 py-3 dark:border-white/10 dark:bg-white/5 sm:col-span-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    Price impact
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-foreground">
+                    {selectedComparison.priceImpact || 'Unavailable'}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-[16px] border border-dashed border-black/10 px-4 py-8 text-center text-sm text-muted-foreground dark:border-white/10">
+                Compare routes to load an estimate.
+              </div>
+            )}
+          </section>
+
+          <section className="neo-panel p-4 md:p-5">
             <div className="mb-4 flex items-center justify-between gap-3">
               <div>
-                <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Provider Comparison</p>
-                <h2 className="text-2xl font-black">AVNU vs Ekubo</h2>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  Providers
+                </p>
+                <h3 className="mt-1 font-display text-[1.2rem] font-semibold tracking-[-0.04em] text-foreground">
+                  Comparison
+                </h3>
               </div>
-              {selectedComparison && <div className="neo-chip bg-[#4ECDC4]">Route Ready</div>}
+              <div className="neo-chip">{comparisons.length}</div>
             </div>
+
             {comparisons.length > 0 ? (
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {comparisons.map((comparison) => {
                   const isSelected = providerId === 'best'
                     ? comparison.recommended
@@ -404,66 +355,67 @@ export function SwapPage() {
                   return (
                     <div
                       key={comparison.providerId}
-                      className={`border-[2px] border-black p-4 ${isSelected ? 'bg-white' : 'bg-[#FEFAE0]'}`}
+                      className="flex items-center justify-between gap-3 rounded-[16px] border border-black/10 bg-black/[0.03] px-3.5 py-3 dark:border-white/10 dark:bg-white/5"
                     >
-                      <div className="mb-3 flex items-center justify-between gap-3">
-                        <p className="text-lg font-black">{comparison.provider}</p>
-                        <div className="flex gap-2">
-                          {comparison.recommended && (
-                            <span className="border-[2px] border-black bg-[#FFE66D] px-2 py-1 text-[11px] font-black uppercase tracking-[0.08em]">
-                              Best
-                            </span>
-                          )}
-                          {isSelected && (
-                            <span className="border-[2px] border-black bg-[#4ECDC4] px-2 py-1 text-[11px] font-black uppercase tracking-[0.08em]">
-                              Selected
-                            </span>
-                          )}
-                        </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-foreground">{comparison.provider}</p>
+                        <p className="truncate text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                          {comparison.amountOut}
+                        </p>
                       </div>
-                      <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Estimated Output</p>
-                      <p className="mt-2 text-2xl font-black">{comparison.amountOut}</p>
-                      <div className="mt-3 space-y-1.5 text-sm text-black/75">
-                        <p><span className="font-black">Input:</span> {comparison.amountIn}</p>
-                        <p><span className="font-black">Calls:</span> {comparison.callCount}</p>
-                        <p><span className="font-black">Price Impact:</span> {comparison.priceImpact || 'Unavailable'}</p>
+                      <div className="flex shrink-0 gap-2">
+                        {comparison.recommended ? (
+                          <span className="rounded-full bg-[#B5F36B]/14 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-foreground">
+                            Best
+                          </span>
+                        ) : null}
+                        {isSelected ? (
+                          <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-950">
+                            Active
+                          </span>
+                        ) : null}
                       </div>
                     </div>
                   );
                 })}
               </div>
             ) : (
-              <p className="text-[15px] leading-relaxed text-black/70">
-                Compare routes first to see expected output, provider choice, and call count before signing in your wallet.
-              </p>
+              <div className="rounded-[16px] border border-dashed border-black/10 px-4 py-8 text-center text-sm text-muted-foreground dark:border-white/10">
+                No provider comparison yet.
+              </div>
             )}
-          </div>
+          </section>
 
-          <div className="neo-panel p-6">
-            <div className="mb-4 flex items-center gap-3">
-              <FileText className="h-5 w-5" />
-              <h2 className="text-2xl font-black">Last Submitted Transaction</h2>
+          <section className="neo-panel p-4 md:p-5">
+            <div className="mb-4">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                Last transaction
+              </p>
+              <h3 className="mt-1 font-display text-[1.2rem] font-semibold tracking-[-0.04em] text-foreground">
+                Submission
+              </h3>
             </div>
+
             {lastTx ? (
-              <div className="space-y-3">
-                <p className="text-wrap-safe font-mono text-sm text-black/60">{lastTx.hash}</p>
+              <div className="rounded-[16px] border border-black/10 bg-black/[0.03] px-3.5 py-3 dark:border-white/10 dark:bg-white/5">
+                <p className="text-wrap-safe text-sm text-foreground">{lastTx.hash}</p>
                 <a
                   href={lastTx.explorerUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 text-[15px] font-bold underline underline-offset-4"
+                  className="mt-2 inline-flex items-center gap-2 text-sm font-semibold text-foreground"
                 >
                   Open on Voyager
                   <ExternalLink className="h-4 w-4" />
                 </a>
               </div>
             ) : (
-              <p className="text-[15px] leading-relaxed text-black/70">
-                Submitted swaps appear here immediately and also get written to the shared logs page.
-              </p>
+              <div className="rounded-[16px] border border-dashed border-black/10 px-4 py-8 text-center text-sm text-muted-foreground dark:border-white/10">
+                No submitted swap yet.
+              </div>
             )}
-          </div>
-        </aside>
+          </section>
+        </div>
       </div>
     </div>
   );

@@ -30,7 +30,7 @@ function PopoverContent({
         align={align}
         sideOffset={sideOffset}
         className={cn(
-          "text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 w-72 origin-(--radix-popover-content-transform-origin) rounded-none border-[2px] border-black bg-[#FEFAE0] p-4 shadow-[4px_4px_0px_0px_#1a1a1a] outline-hidden dark:border-[#3f4c76] dark:bg-[#1d2440] dark:shadow-[4px_4px_0px_0px_#070b17]",
+          "text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 w-72 origin-(--radix-popover-content-transform-origin) rounded-[24px] border border-black/10 bg-white/92 p-4 shadow-[0_24px_60px_-34px_rgba(15,23,42,0.5)] backdrop-blur-2xl outline-hidden dark:border-white/10 dark:bg-[#0d111a]/92 dark:shadow-[0_28px_64px_-34px_rgba(0,0,0,0.86)]",
           className
         )}
         {...props}

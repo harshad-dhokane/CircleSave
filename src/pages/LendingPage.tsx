@@ -3,13 +3,12 @@ import { Link } from 'react-router-dom';
 import {
   ExternalLink,
   FileText,
-  PiggyBank,
   RefreshCcw,
   ShieldCheck,
   Wallet,
-  Zap,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { CopyButton } from '@/components/ui/copy-button';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -27,17 +26,20 @@ import {
   type StarkZapTokenKey,
   useStarkZapActions,
 } from '@/hooks/useStarkZapActions';
+import { useStarkZapModuleStats } from '@/hooks/useStarkZapModuleStats';
 import { useWallet } from '@/hooks/useWallet';
+import { formatAddress } from '@/lib/constants';
 
 const TOKEN_OPTIONS: StarkZapTokenKey[] = ['ETH', 'USDC', 'STRK'];
 const TOKEN_PRESETS = ['1', '5', '10'];
-const LENDING_ACTIONS: Array<{ value: StarkZapLendingStrategy; label: string; helper: string }> = [
-  { value: 'deposit', label: 'Deposit', helper: 'Supply idle assets into Vesu through StarkZap.' },
-  { value: 'withdraw', label: 'Withdraw', helper: 'Pull a fixed amount out of Vesu.' },
-  { value: 'withdraw_max', label: 'Withdraw Max', helper: 'Empty the selected supplied asset in one click.' },
-  { value: 'borrow', label: 'Borrow', helper: 'Borrow against a chosen collateral asset and preview health before signing.' },
-  { value: 'repay', label: 'Repay', helper: 'Repay outstanding debt while checking the resulting health path.' },
+const LENDING_ACTIONS: Array<{ value: StarkZapLendingStrategy; label: string }> = [
+  { value: 'deposit', label: 'Deposit' },
+  { value: 'withdraw', label: 'Withdraw' },
+  { value: 'withdraw_max', label: 'Withdraw Max' },
+  { value: 'borrow', label: 'Borrow' },
+  { value: 'repay', label: 'Repay' },
 ];
+
 export function LendingPage() {
   const { isConnected, address } = useWallet();
   const {
@@ -64,8 +66,8 @@ export function LendingPage() {
   const [activeAction, setActiveAction] = useState<'submit' | 'health' | 'max' | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const accountInitializing = isConnected && !isWalletReady;
   const feeMode: StarkZapExecutionMode = 'user_pays';
+  const moduleStats = useStarkZapModuleStats('lending');
 
   const requiresPair = action === 'borrow' || action === 'repay';
   const requiresAmount = action !== 'withdraw_max';
@@ -80,7 +82,7 @@ export function LendingPage() {
       setMarkets(nextMarkets);
       setPositions(nextPositions);
     } catch {
-      // Errors are surfaced in the shared hook.
+      // hook toasts already
     } finally {
       setRefreshing(false);
     }
@@ -169,136 +171,88 @@ export function LendingPage() {
 
   if (!isConnected) {
     return (
-      <div className="min-h-screen bg-[#FEFAE0] flex items-center justify-center">
-        <div className="neo-card max-w-xl p-10 text-center">
-          <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center border-[3px] border-black bg-[#FFE66D]">
-            <Wallet className="h-9 w-9" />
+      <div className="space-y-4 pb-4">
+        <section className="neo-panel p-10 text-center">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-[22px] border border-white/10 bg-white/6 text-white">
+            <Wallet className="h-7 w-7" />
           </div>
-          <h2 className="mb-3 text-3xl font-black">Connect Your Wallet</h2>
-          <p className="text-[15px] leading-relaxed text-black/70">
-            Lending reuses the same CircleSave wallet session. Connect once from the header to access Vesu actions.
-          </p>
-        </div>
+          <h2 className="font-display text-3xl font-semibold tracking-[-0.05em] text-foreground">
+            Connect to use lending
+          </h2>
+        </section>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#FEFAE0]">
-      <div className="content-divider-bottom border-b-[2px] border-black bg-white">
-        <div className="page-shell py-8 md:py-10">
-          <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-            <div>
-              <div className="mb-3 inline-flex items-center gap-2 border-[2px] border-black bg-[#96CEB4] px-3 py-1.5 text-sm font-black uppercase tracking-[0.08em]">
-                <Zap className="h-4 w-4" />
-                StarkZap v2 Lending
+    <div className="space-y-4 pb-4">
+      <div className="grid gap-4 xl:items-start xl:grid-cols-[1.08fr_0.92fr]">
+        <section className="space-y-4">
+          <section className="neo-panel p-4 md:p-5">
+            <div className="mb-4 flex flex-wrap gap-2">
+              <div className="neo-chip">
+                <Wallet className="h-4 w-4" />
+                <span className="text-wrap-safe min-w-0 normal-case tracking-normal">{formatAddress(address || '')}</span>
               </div>
-              <h1 className="text-4xl font-black md:text-5xl">Vesu Strategy Workspace</h1>
-              <p className="mt-3 max-w-3xl text-[15px] leading-relaxed text-black/70 md:text-base">
-                Deposit, withdraw, borrow, repay, and preview health inside CircleSave so your savings circles can tap real liquidity instead of isolated demo actions.
-              </p>
-              <div className="mt-4 flex flex-wrap gap-3">
-                <div className="neo-chip bg-white">
-                  <Wallet className="h-4 w-4" />
-                  <span className="text-wrap-safe min-w-0 font-mono normal-case tracking-normal">
-                    {address}
-                  </span>
-                </div>
-                <div className="neo-chip bg-[#FEFAE0]">
-                  <ShieldCheck className="h-4 w-4" />
-                  Vesu + StarkZap health checks
-                </div>
-              </div>
+              <CopyButton value={address || ''} successMessage="Wallet address copied" />
+              <div className="neo-chip capitalize">{action}</div>
             </div>
 
-            <div className="flex flex-wrap gap-3">
-              <Button variant="outline" onClick={() => void refresh()} disabled={!isWalletReady || refreshing} className="border-[2px] border-black">
-                <RefreshCcw className="mr-2 h-4 w-4" />
-                {refreshing ? 'Refreshing...' : 'Refresh Data'}
+            <div className="mb-4 grid gap-3 sm:grid-cols-3">
+              {[
+                { label: 'Total transactions', value: String(moduleStats.totalTransactions) },
+                { label: 'My transactions', value: String(moduleStats.myTransactions) },
+                { label: 'Transaction amount', value: moduleStats.amountLabel },
+              ].map((item) => (
+                <div key={item.label} className="neo-stat-tile">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    {item.label}
+                  </p>
+                  <p className="mt-2 text-sm font-semibold text-foreground sm:text-base">
+                    {item.value}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            <div className="mb-5 grid gap-3 sm:flex sm:flex-wrap">
+              <Button variant="outline" onClick={() => void refresh()} disabled={!isWalletReady || refreshing} className="w-full sm:w-auto">
+                <RefreshCcw className="h-4 w-4" />
+                {refreshing ? 'Refreshing...' : 'Refresh'}
               </Button>
-              <Link to="/logs">
-                <Button variant="outline" className="border-[2px] border-black">
-                  View Logs
-                </Button>
-              </Link>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="page-shell grid gap-6 py-8 xl:grid-cols-[minmax(0,1fr)_360px] xl:py-10">
-        {accountInitializing && (
-          <div className="xl:col-span-2 border-[2px] border-black bg-[#FFE66D] px-5 py-4 text-sm font-bold leading-relaxed shadow-[3px_3px_0px_0px_#1a1a1a]">
-            Wallet session is finishing setup. Lending markets and positions will load automatically in a moment.
-          </div>
-        )}
-        <section className="space-y-6">
-          <div className="neo-panel p-6 md:p-8">
-            <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div>
-                <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Action Builder</p>
-                <h2 className="text-3xl font-black">Lend, Borrow, Or Repay</h2>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {TOKEN_PRESETS.map((preset) => (
-                  <button
-                    key={preset}
-                    type="button"
-                    onClick={() => setAmount(preset)}
-                    className={`border-[2px] border-black px-3 py-1.5 text-sm font-black ${
-                      amount === preset ? 'bg-black text-white' : 'bg-white'
-                    }`}
-                  >
-                    {preset}
-                  </button>
-                ))}
-              </div>
+              <Button variant="outline" asChild className="w-full sm:w-auto">
+                <Link to="/logs">
+                  <FileText className="h-4 w-4" />
+                  Logs
+                </Link>
+              </Button>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              <div>
-                <p className="mb-2 text-sm font-bold">Action</p>
-                <Select value={action} onValueChange={(value) => setAction(value as StarkZapLendingStrategy)}>
-                  <SelectTrigger className="w-full border-[2px] border-black bg-white">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="border-[2px] border-black">
-                    {LENDING_ACTIONS.map((item) => (
-                      <SelectItem key={item.value} value={item.value}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="mt-2 text-sm text-black/60">
-                  {LENDING_ACTIONS.find((item) => item.value === action)?.helper}
-                </p>
-              </div>
-
-              <div>
-                <p className="mb-2 text-sm font-bold">{requiresPair ? 'Debt Asset' : 'Asset'}</p>
-                <Select value={token} onValueChange={(value) => setToken(value as StarkZapTokenKey)}>
-                  <SelectTrigger className="w-full border-[2px] border-black bg-white">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="border-[2px] border-black">
-                    {TOKEN_OPTIONS.map((item) => (
-                      <SelectItem key={item} value={item}>
-                        {item}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {requiresPair && (
+            <div className="space-y-3">
+              <div className="grid gap-3 rounded-[18px] border border-black/10 bg-black/[0.03] p-3.5 dark:border-white/10 dark:bg-white/5 sm:grid-cols-2 xl:grid-cols-3">
                 <div>
-                  <p className="mb-2 text-sm font-bold">Collateral Asset</p>
-                  <Select value={collateralToken} onValueChange={(value) => setCollateralToken(value as StarkZapTokenKey)}>
-                    <SelectTrigger className="w-full border-[2px] border-black bg-white">
+                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Action</p>
+                  <Select value={action} onValueChange={(value) => setAction(value as StarkZapLendingStrategy)}>
+                    <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent className="border-[2px] border-black">
+                    <SelectContent>
+                      {LENDING_ACTIONS.map((item) => (
+                        <SelectItem key={item.value} value={item.value}>
+                          {item.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{requiresPair ? 'Debt asset' : 'Asset'}</p>
+                  <Select value={token} onValueChange={(value) => setToken(value as StarkZapTokenKey)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
                       {TOKEN_OPTIONS.map((item) => (
                         <SelectItem key={item} value={item}>
                           {item}
@@ -307,204 +261,243 @@ export function LendingPage() {
                     </SelectContent>
                   </Select>
                 </div>
-              )}
 
-              {requiresAmount && (
-                <div>
-                  <p className="mb-2 text-sm font-bold">Amount</p>
-                  <Input
-                    value={amount}
-                    onChange={(event) => setAmount(event.target.value)}
-                    className="border-[2px] border-black bg-white"
-                    placeholder="1"
-                  />
+                {requiresPair ? (
+                  <div>
+                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Collateral asset</p>
+                    <Select value={collateralToken} onValueChange={(value) => setCollateralToken(value as StarkZapTokenKey)}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {TOKEN_OPTIONS.map((item) => (
+                          <SelectItem key={item} value={item}>
+                            {item}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : null}
+              </div>
+
+              {requiresAmount ? (
+                <div className="rounded-[18px] border border-black/10 bg-black/[0.03] p-3.5 dark:border-white/10 dark:bg-white/5">
+                  <div>
+                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Amount</p>
+                      <div className="scrollbar-hidden flex gap-2 overflow-x-auto pb-1">
+                        {TOKEN_PRESETS.map((preset) => (
+                          <button
+                            key={preset}
+                            type="button"
+                            onClick={() => setAmount(preset)}
+                            className={`rounded-full border px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] transition ${
+                              amount === preset
+                                ? 'border-[#9ad255]/35 bg-[#B5F36B] text-slate-950'
+                                : 'border-black/10 bg-black/[0.03] text-muted-foreground hover:bg-black/[0.045] dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/8'
+                            }`}
+                          >
+                            {preset}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <Input value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="1" />
+                  </div>
                 </div>
-              )}
-
+              ) : null}
             </div>
 
-            <div className="mt-6 flex flex-wrap gap-3">
-              {action === 'borrow' && (
-                <Button type="button" onClick={handleMaxBorrow} disabled={activeAction !== null || !isWalletReady} className="neo-button-secondary">
-                  {activeAction === 'max' ? 'Checking Max Borrow...' : 'Get Max Borrow'}
+            <div className="mt-5 grid gap-3 sm:flex sm:flex-wrap">
+              {action === 'borrow' ? (
+                <Button variant="outline" onClick={handleMaxBorrow} disabled={activeAction !== null || !isWalletReady} className="w-full sm:w-auto">
+                  {activeAction === 'max' ? 'Checking...' : 'Max borrow'}
                 </Button>
-              )}
-              {requiresPair && (
-                <Button type="button" onClick={handlePreviewHealth} disabled={activeAction !== null || !isWalletReady} className="neo-button-secondary">
-                  {activeAction === 'health' ? 'Previewing Health...' : 'Preview Health'}
+              ) : null}
+              {requiresPair ? (
+                <Button variant="outline" onClick={handlePreviewHealth} disabled={activeAction !== null || !isWalletReady} className="w-full sm:w-auto">
+                  {activeAction === 'health' ? 'Previewing...' : 'Preview health'}
                 </Button>
-              )}
-              <Button type="button" onClick={handleSubmit} disabled={activeAction !== null || !isWalletReady} className="neo-button-primary">
-                {activeAction === 'submit' ? 'Submitting...' : `${LENDING_ACTIONS.find((item) => item.value === action)?.label} Now`}
+              ) : null}
+              <Button onClick={handleSubmit} disabled={activeAction !== null || !isWalletReady} className="w-full sm:w-auto">
+                {activeAction === 'submit' ? 'Submitting...' : LENDING_ACTIONS.find((item) => item.value === action)?.label || 'Submit'}
               </Button>
             </div>
 
-            {errorMessage && (
-              <div className="mt-6 border-[2px] border-black bg-[#FF6B6B]/15 p-4">
-                <p className="font-black text-[#8b1e1e]">Lending Error</p>
-                <p className="mt-1 text-[15px] leading-relaxed text-black/75">{errorMessage}</p>
+            {errorMessage ? (
+              <div className="mt-4 rounded-[22px] border border-rose-500/20 bg-rose-500/10 px-4 py-4 text-sm text-rose-100">
+                {errorMessage}
               </div>
-            )}
-          </div>
+            ) : null}
+          </section>
 
-          <div className="neo-panel p-6 md:p-8">
-            <div className="mb-5 flex items-center gap-3">
-              <PiggyBank className="h-6 w-6" />
+          <section className="neo-panel p-5 md:p-6">
+            <div className="mb-5 flex items-center justify-between gap-3">
               <div>
-                <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Market Snapshot</p>
-                <h2 className="text-2xl font-black">Live Markets</h2>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                  Positions
+                </p>
+                <h3 className="font-display text-[1.65rem] font-semibold tracking-[-0.04em] text-foreground">
+                  Wallet positions
+                </h3>
               </div>
             </div>
+
+            {positions.length > 0 ? (
+              <div className="space-y-3">
+                {positions.map((position, index) => (
+                  <div key={`${position.poolName}-${position.type}-${index}`} className="rounded-[22px] border border-black/10 bg-black/[0.03] p-4 dark:border-white/10 dark:bg-white/5">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold text-foreground capitalize">{position.type}</p>
+                      <span className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{position.poolName}</span>
+                    </div>
+                    <p className="mt-3 text-sm text-foreground">Collateral: {position.collateral}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">Debt: {position.debt || 'None'}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-[22px] border border-dashed border-black/10 px-4 py-10 text-center text-sm text-muted-foreground dark:border-white/10">
+                No lending positions yet.
+              </div>
+            )}
+          </section>
+        </section>
+
+        <div className="space-y-4">
+          <section className="neo-panel p-5 md:p-6">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                  Health
+                </p>
+                <h3 className="font-display text-[1.65rem] font-semibold tracking-[-0.04em] text-foreground">
+                  Risk preview
+                </h3>
+              </div>
+              <ShieldCheck className="h-5 w-5 text-[#B5F36B]" />
+            </div>
+
+            {health ? (
+              <div className="space-y-3">
+                <div className="rounded-[22px] border border-black/10 bg-black/[0.03] p-4 dark:border-white/10 dark:bg-white/5">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                    Simulation
+                  </p>
+                  <p className="mt-3 text-2xl font-semibold text-foreground">{health.simulationOk ? 'OK' : 'Risky'}</p>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-[22px] border border-black/10 bg-black/[0.03] p-4 dark:border-white/10 dark:bg-white/5">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Current collateral</p>
+                    <p className="mt-3 text-sm font-semibold text-foreground">{health.currentCollateralValue}</p>
+                  </div>
+                  <div className="rounded-[22px] border border-black/10 bg-black/[0.03] p-4 dark:border-white/10 dark:bg-white/5">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Current debt</p>
+                    <p className="mt-3 text-sm font-semibold text-foreground">{health.currentDebtValue}</p>
+                  </div>
+                  <div className="rounded-[22px] border border-black/10 bg-black/[0.03] p-4 dark:border-white/10 dark:bg-white/5">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Projected collateral</p>
+                    <p className="mt-3 text-sm font-semibold text-foreground">{health.projectedCollateralValue || 'Unavailable'}</p>
+                  </div>
+                  <div className="rounded-[22px] border border-black/10 bg-black/[0.03] p-4 dark:border-white/10 dark:bg-white/5">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Projected debt</p>
+                    <p className="mt-3 text-sm font-semibold text-foreground">{health.projectedDebtValue || 'Unavailable'}</p>
+                  </div>
+                </div>
+                {health.simulationReason ? (
+                  <div className="rounded-[22px] border border-rose-500/20 bg-rose-500/10 px-4 py-4 text-sm text-rose-100">
+                    {health.simulationReason}
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <div className="rounded-[22px] border border-dashed border-black/10 px-4 py-10 text-center text-sm text-muted-foreground dark:border-white/10">
+                Preview health for borrow or repay actions.
+              </div>
+            )}
+
+            {maxBorrow ? (
+              <div className="mt-4 rounded-[22px] border border-black/10 bg-black/[0.03] p-4 dark:border-white/10 dark:bg-white/5">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                  Max borrow
+                </p>
+                <p className="mt-3 text-lg font-semibold text-foreground">{maxBorrow}</p>
+              </div>
+            ) : null}
+          </section>
+
+          <section className="neo-panel p-5 md:p-6">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                  Markets
+                </p>
+                <h3 className="font-display text-[1.65rem] font-semibold tracking-[-0.04em] text-foreground">
+                  Snapshot
+                </h3>
+              </div>
+            </div>
+
             {markets.length > 0 ? (
-              <div className="grid gap-4 md:grid-cols-2">
-                {markets.map((market) => (
-                  <div key={`${market.protocol}-${market.asset}-${market.poolName}`} className="border-[2px] border-black bg-[#FEFAE0] p-5">
+              <div className="space-y-3">
+                {markets.slice(0, 4).map((market) => (
+                  <div key={`${market.protocol}-${market.asset}-${market.poolName}`} className="rounded-[22px] border border-black/10 bg-black/[0.03] p-4 dark:border-white/10 dark:bg-white/5">
                     <div className="flex items-center justify-between gap-3">
                       <div>
-                        <p className="font-black">{market.asset}</p>
-                        <p className="mt-1 text-sm text-black/60">{market.protocol} • {market.poolName}</p>
+                        <p className="text-sm font-semibold text-foreground">{market.asset}</p>
+                        <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{market.protocol} • {market.poolName}</p>
                       </div>
-                      <div className="border-[2px] border-black bg-white px-3 py-1 text-xs font-black uppercase tracking-[0.08em]">
-                        {market.canBeBorrowed ? 'Borrowable' : 'Supply Only'}
-                      </div>
+                      <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-950">
+                        {market.canBeBorrowed ? 'Borrowable' : 'Supply only'}
+                      </span>
                     </div>
-                    <div className="mt-4 space-y-2 text-[15px]">
-                      <p><span className="font-black">Supply APY:</span> {market.supplyApy || 'Unavailable'}</p>
-                      <p><span className="font-black">Borrow APR:</span> {market.borrowApr || 'Unavailable'}</p>
-                      <p><span className="font-black">Supplied:</span> {market.totalSupplied || 'Unavailable'}</p>
-                      <p><span className="font-black">Borrowed:</span> {market.totalBorrowed || 'Unavailable'}</p>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      <p className="text-sm text-foreground">Supply APY: {market.supplyApy || 'Unavailable'}</p>
+                      <p className="text-sm text-foreground">Borrow APR: {market.borrowApr || 'Unavailable'}</p>
                     </div>
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="border-[2px] border-black bg-[#FEFAE0] p-6 text-center">
-                <PiggyBank className="mx-auto mb-3 h-10 w-10 text-black/25" />
-                <h3 className="text-xl font-black">No market snapshot yet</h3>
-                <p className="mt-2 text-sm leading-relaxed text-black/65">
-                  Refresh the page data to load the latest Vesu market snapshot for this wallet session.
-                </p>
+              <div className="rounded-[22px] border border-dashed border-black/10 px-4 py-10 text-center text-sm text-muted-foreground dark:border-white/10">
+                No market snapshot loaded yet.
               </div>
             )}
-          </div>
-        </section>
+          </section>
 
-        <aside className="neo-sticky-rail space-y-5">
-          <div className="neo-panel p-6">
-            <div className="mb-4 flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center border-[2px] border-black bg-[#FFE66D]">
-                <ShieldCheck className="h-5 w-5" />
-              </div>
+          <section className="neo-panel p-5 md:p-6">
+            <div className="mb-4 flex items-center justify-between gap-3">
               <div>
-                <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Execution Rail</p>
-                <h2 className="text-2xl font-black">Current Setup</h2>
-              </div>
-            </div>
-            <div className="space-y-3">
-              <div className="border-[2px] border-black bg-[#FEFAE0] p-4">
-                <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Action</p>
-                <p className="mt-2 text-2xl font-black">{LENDING_ACTIONS.find((item) => item.value === action)?.label}</p>
-              </div>
-              <div className="border-[2px] border-black bg-white p-4">
-                <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">{requiresPair ? 'Debt / Collateral' : 'Selected Asset'}</p>
-                <p className="mt-2 text-xl font-black">
-                  {requiresPair ? `${token} / ${collateralToken}` : token}
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                  Last transaction
                 </p>
+                <h3 className="font-display text-[1.65rem] font-semibold tracking-[-0.04em] text-foreground">
+                  Submission
+                </h3>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="border-[2px] border-black bg-white p-4">
-                  <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Amount</p>
-                  <p className="mt-2 text-xl font-black">{requiresAmount ? amount || '0' : 'Max'}</p>
-                </div>
-                <div className="border-[2px] border-black bg-white p-4">
-                  <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Execution</p>
-                  <p className="mt-2 text-xl font-black">Regular Signing</p>
-                </div>
-              </div>
-              {maxBorrow && (
-                <div className="border-[2px] border-black bg-white p-4">
-                  <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Max Borrow</p>
-                  <p className="mt-2 text-2xl font-black">{maxBorrow}</p>
-                </div>
-              )}
             </div>
-          </div>
 
-          <div className="neo-panel p-6">
-            <div className="mb-4 flex items-center gap-3">
-              <ShieldCheck className="h-5 w-5" />
-              <h2 className="text-2xl font-black">Health Preview</h2>
-            </div>
-            {health ? (
-              <div className="space-y-3 text-[15px]">
-                <div className="border-[2px] border-black bg-[#FEFAE0] p-4">
-                  <p className="text-xs font-black uppercase tracking-[0.08em] text-black/55">Simulation</p>
-                  <p className="mt-2 text-3xl font-black">{health.simulationOk ? 'OK' : 'Risky'}</p>
-                </div>
-                <p><span className="font-black">Current Collateral:</span> {health.currentCollateralValue}</p>
-                <p><span className="font-black">Current Debt:</span> {health.currentDebtValue}</p>
-                <p><span className="font-black">Projected Collateral:</span> {health.projectedCollateralValue || 'Unavailable'}</p>
-                <p><span className="font-black">Projected Debt:</span> {health.projectedDebtValue || 'Unavailable'}</p>
-                <p><span className="font-black">Max Borrow:</span> {health.maxBorrowAmount || maxBorrow || 'Unavailable'}</p>
-                {!health.simulationOk && health.simulationReason && (
-                  <p className="text-[#8b1e1e]"><span className="font-black">Reason:</span> {health.simulationReason}</p>
-                )}
-              </div>
-            ) : (
-              <p className="text-[15px] leading-relaxed text-black/70">
-                Borrow and repay flows can preview projected health before you sign, so you can show judges the risk tooling behind the lending integration.
-              </p>
-            )}
-          </div>
-
-          <div className="neo-panel p-6">
-            <div className="mb-4 flex items-center gap-3">
-              <FileText className="h-5 w-5" />
-              <h2 className="text-2xl font-black">Last Submitted Transaction</h2>
-            </div>
             {lastTx ? (
               <div className="space-y-3">
-                <p className="text-wrap-safe font-mono text-sm text-black/60">{lastTx.hash}</p>
+                <p className="text-wrap-safe text-sm text-muted-foreground">{lastTx.hash}</p>
                 <a
                   href={lastTx.explorerUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 text-[15px] font-bold underline underline-offset-4"
+                  className="inline-flex items-center gap-2 text-sm font-semibold text-foreground"
                 >
                   Open on Voyager
                   <ExternalLink className="h-4 w-4" />
                 </a>
               </div>
             ) : (
-              <p className="text-[15px] leading-relaxed text-black/70">
-                Submitted lending actions appear here immediately and also get written to the shared logs page.
-              </p>
-            )}
-          </div>
-
-          <div className="neo-panel p-6">
-            <div className="mb-4 flex items-center gap-3">
-              <PiggyBank className="h-5 w-5" />
-              <h2 className="text-2xl font-black">Wallet Positions</h2>
-            </div>
-            {positions.length > 0 ? (
-              <div className="space-y-3">
-                {positions.map((position, index) => (
-                  <div key={`${position.poolName}-${position.type}-${index}`} className="border-[2px] border-black bg-[#FEFAE0] p-4">
-                    <p className="font-black capitalize">{position.type}</p>
-                    <p className="mt-1 text-sm text-black/60">{position.poolName}</p>
-                    <p className="mt-3 text-[15px]"><span className="font-black">Collateral:</span> {position.collateral}</p>
-                    <p className="text-[15px]"><span className="font-black">Debt:</span> {position.debt || 'None'}</p>
-                  </div>
-                ))}
+              <div className="rounded-[22px] border border-dashed border-black/10 px-4 py-10 text-center text-sm text-muted-foreground dark:border-white/10">
+                No submitted lending transaction yet.
               </div>
-            ) : (
-              <p className="text-[15px] leading-relaxed text-black/70">
-                No lending positions found for this wallet yet.
-              </p>
             )}
-          </div>
-        </aside>
+          </section>
+        </div>
       </div>
     </div>
   );
