@@ -1,6 +1,6 @@
 import { useAccount, useProvider } from '@starknet-react/core';
 import { useCallback } from 'react';
-import type { AccountInterface, ProviderInterface } from 'starknet';
+import { WalletAccount, type AccountInterface, type ProviderInterface } from 'starknet';
 import { toast } from 'sonner';
 import {
   Amount,
@@ -242,10 +242,9 @@ function toFriendlyActionError(kind: 'swap' | 'dca' | 'lending' | 'staking' | 'b
     lower.includes('snip-9') ||
     lower.includes('snip9') ||
     lower.includes('sponsored execution is not available') ||
-    lower.includes('paymaster') ||
-    lower.includes('fee mode')
+    lower.includes('paymaster')
   ) {
-    return 'This Cartridge session uses regular wallet signing in CircleSave. Gasless execution is not available for this account.';
+    return 'This Cartridge session uses regular wallet signing in CircleSave. CircleSave will use normal gas fees instead.';
   }
 
   if (
@@ -345,26 +344,46 @@ function supportsSponsoredExecutionForAccount(
     return false;
   }
 
-  const constructorName = (account as { constructor?: { name?: string } }).constructor?.name;
-  if (constructorName === 'WalletAccount' || constructorName === '_WalletAccount') {
+  if (isRegularWalletSigningAccount(account)) {
     return false;
   }
 
   return typeof (account as { executePaymasterTransaction?: unknown }).executePaymasterTransaction === 'function';
 }
 
+function isRegularWalletSigningAccount(account: unknown) {
+  if (!account || typeof account !== 'object') {
+    return false;
+  }
+
+  if (account instanceof WalletAccount) {
+    return true;
+  }
+
+  const constructorName = (account as { constructor?: { name?: string } }).constructor?.name;
+  if (
+    constructorName === 'WalletAccount' ||
+    constructorName === '_WalletAccount' ||
+    constructorName === 'ControllerAccount' ||
+    constructorName === 'SessionAccount'
+  ) {
+    return true;
+  }
+
+  return 'walletProvider' in (account as Record<string, unknown>);
+}
+
 function getSponsoredExecutionNotice(account: unknown, paymasterProvider: unknown) {
   if (!paymasterProvider) {
-    return 'Gasless mode is disabled because the AVNU paymaster provider is not configured for this environment.';
+    return 'Gasless mode is disabled for this deployment, so CircleSave will use normal gas fees.';
   }
 
   if (!account || typeof account !== 'object') {
     return 'Gasless support will be checked as soon as the wallet session finishes loading.';
   }
 
-  const constructorName = (account as { constructor?: { name?: string } }).constructor?.name;
-  if (constructorName === 'WalletAccount' || constructorName === '_WalletAccount') {
-    return 'This Cartridge wallet session uses regular signing only in CircleSave because the connected account is not SNIP-9 compatible for sponsored execution.';
+  if (isRegularWalletSigningAccount(account)) {
+    return 'This Cartridge connection uses regular wallet signing in CircleSave. Transactions will use normal gas fees.';
   }
 
   if (supportsSponsoredExecutionForAccount(account, paymasterProvider)) {

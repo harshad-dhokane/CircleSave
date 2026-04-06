@@ -6,7 +6,7 @@ import { constants } from 'starknet';
 
 const RPC_URL = import.meta.env.VITE_STARKNET_RPC_URL || 'https://starknet-sepolia-rpc.publicnode.com';
 const CARTRIDGE_RPC_URL = import.meta.env.VITE_CARTRIDGE_RPC_URL || 'https://api.cartridge.gg/x/starknet/sepolia';
-const AVNU_PAYMASTER_API_KEY = import.meta.env.VITE_AVNU_PAYMASTER_API_KEY;
+const AVNU_PAYMASTER_API_KEY = import.meta.env.VITE_AVNU_PAYMASTER_API_KEY?.trim();
 const appChain: Chain = {
   id: BigInt('0x534e5f5345504f4c4941'),
   network: 'sepolia',
@@ -47,9 +47,11 @@ export const chains = [appChain];
 export const provider = jsonRpcProvider({
   rpc: () => ({ nodeUrl: RPC_URL }),
 });
-export const paymasterProvider = avnuPaymasterProvider({
-  apiKey: AVNU_PAYMASTER_API_KEY,
-});
+export const paymasterProvider = AVNU_PAYMASTER_API_KEY
+  ? avnuPaymasterProvider({
+    apiKey: AVNU_PAYMASTER_API_KEY,
+  })
+  : undefined;
 
 export const starknetConfig = {
   chains,
